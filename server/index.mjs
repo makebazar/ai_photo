@@ -1,5 +1,8 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import fastifyStatic from "@fastify/static";
+import fs from "node:fs";
+import path from "node:path";
 import { makePool, withTx } from "./db.mjs";
 import { ensureConfigRow, readConfig } from "./config.mjs";
 import { ensureSeedData } from "./seed.mjs";
@@ -338,6 +341,23 @@ async function main() {
     await ensureConfigRow(db);
     await ensureSeedData(db);
   });
+
+  // Serve SPA build when running in a container/production.
+  const distDir = path.join(process.cwd(), "dist");
+  if (fs.existsSync(distDir)) {
+    await app.register(fastifyStatic, { root: distDir });
+
+    app.setNotFoundHandler((req, reply) => {
+      const url = String(req.url || "");
+      if (req.method === "GET" && !url.startsWith("/api")) {
+        const accept = String(req.headers.accept || "");
+        if (accept.includes("text/html") || accept.includes("*/*")) {
+          return reply.type("text/html").sendFile("index.html");
+        }
+      }
+      reply.code(404).send({ ok: false, error: "Not found" });
+    });
+  }
 
   app.get("/health", async () => ({ ok: true }));
 

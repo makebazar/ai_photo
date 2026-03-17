@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@fastify/cors": "^9.0.0",
+    "@fastify/static": "^7.0.4",
     "clsx": "^2.1.1",
     "fastify": "^4.26.2",
     "framer-motion": "^11.0.0",
