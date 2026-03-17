@@ -1,0 +1,1112 @@
+import Fastify from "fastify";
+import cors from "@fastify/cors";
+import { makePool, withTx } from "./db.mjs";
+import { ensureConfigRow, readConfig } from "./config.mjs";
+import { ensureSeedData } from "./seed.mjs";
+import { allocateCommissionsForOrder, makeReferralCodes, parseReferralCode } from "./mlm.mjs";
+import { requireTelegramAuth } from "./auth.mjs";
+import { httpError } from "./http.mjs";
+
+const pool = makePool();
+
+async function upsertUser(db, { tgId, username }) {
+  const { rows } = await db.query(
+    `
+    insert into users (tg_id, username, last_seen_at)
+    values ($1, $2, now())
+    on conflict (tg_id) do update
+      set username = excluded.username,
+          last_seen_at = now()
+    returning id, tg_id, username
+    `,
+    [tgId ?? null, username ?? null],
+  );
+  return rows[0];
+}
+
+async function resolvePartnerByCode(db, code) {
+  const parsed = parseReferralCode(code);
+  if (!parsed) return null;
+  const { kind } = parsed;
+  const column = kind === "client" ? "client_code" : "team_code";
+  const { rows } = await db.query(
+    `select id, public_id, user_id, ${column} as code, status from partners where ${column} = $1`,
+    [code],
+  );
+  return rows[0] ?? null;
+}
+
+async function ensurePartner(db, { userId, teamCode }) {
+  // If partner already exists for this user – return it.
+  const { rows: existing } = await db.query(
+    `select id, public_id, client_code, team_code, parent_partner_id, status from partners where user_id = $1`,
+    [userId],
+  );
+  if (existing[0]) return existing[0];
+
+  let parentPartnerId = null;
+  if (teamCode) {
+    const parent = await resolvePartnerByCode(db, teamCode);
+    if (!parent || parent.status !== "active") throw httpError(400, "Invalid team referral code");
+    parentPartnerId = parent.id;
+  }
+
+  // First insert to get public_id (identity), then update codes using public_id.
+  const { rows: inserted } = await db.query(
+    `
+    insert into partners (user_id, parent_partner_id, status, client_code, team_code)
+    values ($1, $2, 'active', 'tmp', 'tmp')
+    returning id, public_id
+    `,
+    [userId, parentPartnerId],
+  );
+  const p = inserted[0];
+  const codes = makeReferralCodes(p.public_id);
+  const { rows: updated } = await db.query(
+    `
+    update partners
+    set client_code = $2, team_code = $3
+    where id = $1
+    returning id, public_id, client_code, team_code, parent_partner_id, status
+    `,
+    [p.id, codes.clientCode, codes.teamCode],
+  );
+
+  await db.query(
+    `insert into partner_balances (partner_id, available_rub, locked_rub, paid_out_rub)
+     values ($1, 0, 0, 0)
+     on conflict (partner_id) do nothing`,
+    [updated[0].id],
+  );
+
+  return updated[0];
+}
+
+async function ensureClientAttribution(db, { userId, clientCode }) {
+  if (!clientCode) return null;
+  const ref = await resolvePartnerByCode(db, clientCode);
+  if (!ref || ref.status !== "active") throw httpError(400, "Invalid client referral code");
+
+  await db.query(
+    `insert into client_attribution (user_id, partner_id, code)
+     values ($1, $2, $3)
+     on conflict (user_id) do nothing`,
+    [userId, ref.id, clientCode],
+  );
+
+  return ref;
+}
+
+async function createOrder(db, { userId, planId, clientCode }) {
+  const cfg = await readConfig(db);
+  const amountRub = planId === "pro" ? cfg.planPricesRub.pro : cfg.planPricesRub.standard;
+
+  const direct = clientCode ? await ensureClientAttribution(db, { userId, clientCode }) : null;
+  const attributionPartnerId = direct?.id ?? null;
+
+  const { rows } = await db.query(
+    `
+    insert into orders (user_id, plan_id, amount_rub, status, attribution_partner_id, attribution_kind)
+    values ($1, $2, $3, 'unpaid', $4, $5)
+    returning id, user_id, plan_id, amount_rub, status, created_at
+    `,
+    [userId, planId, amountRub, attributionPartnerId, attributionPartnerId ? "client" : null],
+  );
+  return rows[0];
+}
+
+async function getPartnerDashboard(db, partnerPublicId) {
+  const { rows: partners } = await db.query(
+    `select id, public_id, client_code, team_code, parent_partner_id, status, created_at from partners where public_id = $1`,
+    [partnerPublicId],
+  );
+  const p = partners[0];
+  if (!p) throw httpError(404, "Partner not found");
+
+  const { rows: balRows } = await db.query(
+    `select available_rub, locked_rub, paid_out_rub from partner_balances where partner_id = $1`,
+    [p.id],
+  );
+  const balances = balRows[0] ?? { available_rub: 0, locked_rub: 0, paid_out_rub: 0 };
+
+  const [{ rows: clicks }, { rows: signups }, { rows: paid }, { rows: earnings }] = await Promise.all([
+    db.query(`select count(*)::int as n from referral_clicks where partner_id = $1 and kind = 'client'`, [p.id]),
+    db.query(`select count(*)::int as n from client_attribution where partner_id = $1`, [p.id]),
+    db.query(`select count(*)::int as n from orders where attribution_partner_id = $1 and status = 'paid'`, [p.id]),
+    db.query(`select coalesce(sum(amount_rub),0)::int as n from commissions where partner_id = $1 and status = 'available'`, [p.id]),
+  ]);
+
+  const cfg = await readConfig(db);
+
+  return {
+    partner: {
+      id: p.id,
+      publicId: p.public_id,
+      status: p.status,
+      createdAt: p.created_at,
+      links: {
+        client: `t.me/bot?start=${p.client_code}`,
+        team: `t.me/bot?start=${p.team_code}`,
+      },
+    },
+    balances: {
+      availableRub: balances.available_rub,
+      lockedRub: balances.locked_rub,
+      paidOutRub: balances.paid_out_rub,
+    },
+    stats: {
+      clicks: clicks[0]?.n ?? 0,
+      signups: signups[0]?.n ?? 0,
+      paid: paid[0]?.n ?? 0,
+      earningsRub: earnings[0]?.n ?? 0,
+    },
+    policy: {
+      commissionsPct: cfg.commissionsPct,
+      payout: cfg.payout,
+    },
+  };
+}
+
+async function getPartnerTeam(db, partnerPublicId) {
+  const { rows: partners } = await db.query(`select id, public_id from partners where public_id = $1`, [partnerPublicId]);
+  const root = partners[0];
+  if (!root) throw httpError(404, "Partner not found");
+
+  const { rows: l1 } = await db.query(
+    `select id, public_id, status, created_at from partners where parent_partner_id = $1 order by created_at desc`,
+    [root.id],
+  );
+  const l1Ids = l1.map((p) => p.id);
+
+  const { rows: l2 } = l1Ids.length
+    ? await db.query(
+        `select id, public_id, status, created_at, parent_partner_id from partners where parent_partner_id = any($1::uuid[]) order by created_at desc`,
+        [l1Ids],
+      )
+    : { rows: [] };
+
+  async function partnerStats(partnerId) {
+    const [{ rows: clicks }, { rows: paid }, { rows: turnover }] = await Promise.all([
+      db.query(`select count(*)::int as n from referral_clicks where partner_id = $1 and kind = 'client'`, [partnerId]),
+      db.query(`select count(*)::int as n from orders where attribution_partner_id = $1 and status = 'paid'`, [partnerId]),
+      db.query(`select coalesce(sum(amount_rub),0)::int as n from orders where attribution_partner_id = $1 and status = 'paid'`, [partnerId]),
+    ]);
+    return {
+      clicks: clicks[0]?.n ?? 0,
+      paid: paid[0]?.n ?? 0,
+      turnoverRub: turnover[0]?.n ?? 0,
+    };
+  }
+
+  const cfg = await readConfig(db);
+
+  const l1Out = [];
+  for (const p of l1) {
+    const stats = await partnerStats(p.id);
+    const { rows: earn } = await db.query(
+      `
+      select coalesce(sum(c.amount_rub),0)::int as n
+      from commissions c
+      join orders o on o.id = c.order_id
+      where c.partner_id = $1 and c.level = 1 and o.attribution_partner_id = $2
+      `,
+      [root.id, p.id],
+    );
+    l1Out.push({
+      publicId: p.public_id,
+      status: p.status,
+      createdAt: p.created_at,
+      stats,
+      uplineEarningsRub: earn[0]?.n ?? 0,
+      pct: cfg.commissionsPct.teamL1,
+    });
+  }
+
+  const l2Out = [];
+  for (const p of l2) {
+    const stats = await partnerStats(p.id);
+    const { rows: earn } = await db.query(
+      `
+      select coalesce(sum(c.amount_rub),0)::int as n
+      from commissions c
+      join orders o on o.id = c.order_id
+      where c.partner_id = $1 and c.level = 2 and o.attribution_partner_id = $2
+      `,
+      [root.id, p.id],
+    );
+    l2Out.push({
+      publicId: p.public_id,
+      status: p.status,
+      createdAt: p.created_at,
+      parentPublicId: l1.find((x) => x.id === p.parent_partner_id)?.public_id ?? null,
+      stats,
+      uplineEarningsRub: earn[0]?.n ?? 0,
+      pct: cfg.commissionsPct.teamL2,
+    });
+  }
+
+  return { l1: l1Out, l2: l2Out };
+}
+
+async function getPartnerClients(db, partnerPublicId) {
+  const { rows: partners } = await db.query(`select id, public_id from partners where public_id = $1`, [partnerPublicId]);
+  const root = partners[0];
+  if (!root) throw httpError(404, "Partner not found");
+
+  const { rows: l1 } = await db.query(`select id from partners where parent_partner_id = $1`, [root.id]);
+  const l1Ids = l1.map((p) => p.id);
+
+  const directQuery = `
+    select
+      u.id as user_id,
+      u.username,
+      ca.created_at as joined_at,
+      u.last_seen_at,
+      count(o.id)::int as orders_count,
+      coalesce(sum(o.amount_rub),0)::int as revenue_rub,
+      coalesce(sum(c.amount_rub),0)::int as your_earnings_rub
+    from client_attribution ca
+    join users u on u.id = ca.user_id
+    left join orders o on o.user_id = u.id and o.status = 'paid'
+    left join commissions c on c.order_id = o.id and c.partner_id = $2 and c.level = 0
+    where ca.partner_id = $1
+    group by u.id, u.username, ca.created_at, u.last_seen_at
+    order by ca.created_at desc
+    limit 200
+  `;
+
+  const teamQuery = `
+    select
+      u.id as user_id,
+      u.username,
+      ca.created_at as joined_at,
+      u.last_seen_at,
+      count(o.id)::int as orders_count,
+      coalesce(sum(o.amount_rub),0)::int as revenue_rub,
+      coalesce(sum(c.amount_rub),0)::int as your_earnings_rub
+    from client_attribution ca
+    join users u on u.id = ca.user_id
+    left join orders o on o.user_id = u.id and o.status = 'paid'
+    left join commissions c on c.order_id = o.id and c.partner_id = $2 and c.level = 1
+    where ca.partner_id = any($1::uuid[])
+    group by u.id, u.username, ca.created_at, u.last_seen_at
+    order by ca.created_at desc
+    limit 200
+  `;
+
+  const direct = await db.query(directQuery, [root.id, root.id]);
+  const team = l1Ids.length ? await db.query(teamQuery, [l1Ids, root.id]) : { rows: [] };
+
+  return {
+    direct: direct.rows.map((r) => ({
+      userId: r.user_id,
+      username: r.username,
+      joinedAt: r.joined_at,
+      lastSeenAt: r.last_seen_at,
+      ordersCount: r.orders_count,
+      revenueRub: r.revenue_rub,
+      yourEarningsRub: r.your_earnings_rub,
+      level: 1,
+      status: r.revenue_rub > 0 ? "paid" : "registered",
+    })),
+    team: team.rows.map((r) => ({
+      userId: r.user_id,
+      username: r.username,
+      joinedAt: r.joined_at,
+      lastSeenAt: r.last_seen_at,
+      ordersCount: r.orders_count,
+      revenueRub: r.revenue_rub,
+      yourEarningsRub: r.your_earnings_rub,
+      level: 2,
+      status: r.revenue_rub > 0 ? "paid" : "registered",
+    })),
+  };
+}
+
+function requireAdmin(req) {
+  const token = process.env.ADMIN_TOKEN;
+  if (!token) throw httpError(500, "ADMIN_TOKEN is not configured");
+  const header = req.headers["x-admin-token"];
+  if (!header || String(header) !== token) throw httpError(401, "Unauthorized");
+}
+
+async function main() {
+  const app = Fastify({ logger: true });
+  await app.register(cors, { origin: true });
+
+  await withTx(pool, async (db) => {
+    await ensureConfigRow(db);
+    await ensureSeedData(db);
+  });
+
+  app.get("/health", async () => ({ ok: true }));
+
+  app.get("/api/config", async () => {
+    const cfg = await withTx(pool, (db) => readConfig(db));
+    return { ok: true, config: cfg };
+  });
+
+  app.get("/api/packs", async () => {
+    const rows = await withTx(pool, async (db) => {
+      const { rows } = await db.query(
+        `select id, slug, title, description, status, preview_urls, estimated_images, pack_object_id, prompts_per_class, costs_per_class
+         from style_packs
+         where status = 'active'
+         order by updated_at desc`,
+      );
+      return rows;
+    });
+    return { ok: true, packs: rows };
+  });
+
+  app.get("/api/promos", async () => {
+    const rows = await withTx(pool, async (db) => {
+      const { rows } = await db.query(
+        `select id, title, caption, kind, status, cover_url, media_urls, tags
+         from promos
+         where status = 'active'
+         order by updated_at desc`,
+      );
+      return rows;
+    });
+    return { ok: true, promos: rows };
+  });
+
+  // ===== Admin API (token via x-admin-token) =====
+  app.get("/api/admin/config", async (req) => {
+    requireAdmin(req);
+    const cfg = await withTx(pool, (db) => readConfig(db));
+    return { ok: true, config: cfg };
+  });
+
+  app.put("/api/admin/config", async (req) => {
+    requireAdmin(req);
+    const body = req.body ?? {};
+    const patch = body.patch && typeof body.patch === "object" ? body.patch : null;
+    if (!patch) throw httpError(400, "patch is required");
+
+    const cfg = await withTx(pool, async (db) => {
+      const current = await readConfig(db);
+      const merged = {
+        ...current,
+        ...(patch ?? {}),
+        planPricesRub: { ...current.planPricesRub, ...(patch.planPricesRub ?? {}) },
+        planMeta: { ...current.planMeta, ...(patch.planMeta ?? {}) },
+        commissionsPct: { ...current.commissionsPct, ...(patch.commissionsPct ?? {}) },
+        payout: { ...current.payout, ...(patch.payout ?? {}) },
+      };
+      await db.query(`update app_config set config = $1::jsonb, updated_at = now() where id = 1`, [
+        JSON.stringify(merged),
+      ]);
+      return merged;
+    });
+
+    return { ok: true, config: cfg };
+  });
+
+  app.get("/api/admin/packs", async (req) => {
+    requireAdmin(req);
+    const rows = await withTx(pool, async (db) => {
+      const { rows } = await db.query(
+        `select id, slug, title, description, status, preview_urls, estimated_images, pack_object_id, prompts_per_class, costs_per_class, created_at, updated_at
+         from style_packs
+         order by updated_at desc`,
+      );
+      return rows;
+    });
+    return { ok: true, packs: rows };
+  });
+
+  app.post("/api/admin/packs", async (req) => {
+    requireAdmin(req);
+    const b = req.body ?? {};
+    const id = Number(b.id);
+    const slug = b.slug ? String(b.slug) : null;
+    const title = b.title ? String(b.title) : null;
+    const description = b.description ? String(b.description) : null;
+    if (!Number.isFinite(id) || !slug || !title || !description) throw httpError(400, "id,slug,title,description required");
+    const status = b.status === "hidden" ? "hidden" : "active";
+    const previewUrls = Array.isArray(b.previewUrls) ? b.previewUrls.map((x) => String(x)).filter(Boolean) : [];
+    const estimatedImages = Math.max(1, Math.round(Number(b.estimatedImages ?? 20)));
+    const packObjectId = b.packObjectId ? String(b.packObjectId) : null;
+    const promptsPerClass = b.promptsPerClass != null ? Math.max(0, Math.round(Number(b.promptsPerClass))) : null;
+    const costsPerClass = b.costsPerClass && typeof b.costsPerClass === "object" ? b.costsPerClass : {};
+
+    await withTx(pool, async (db) => {
+      await db.query(
+        `
+        insert into style_packs (id, slug, title, description, status, preview_urls, estimated_images, pack_object_id, prompts_per_class, costs_per_class)
+        values ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10::jsonb)
+        on conflict (id) do update
+          set slug = excluded.slug,
+              title = excluded.title,
+              description = excluded.description,
+              status = excluded.status,
+              preview_urls = excluded.preview_urls,
+              estimated_images = excluded.estimated_images,
+              pack_object_id = excluded.pack_object_id,
+              prompts_per_class = excluded.prompts_per_class,
+              costs_per_class = excluded.costs_per_class,
+              updated_at = now()
+        `,
+        [id, slug, title, description, status, JSON.stringify(previewUrls), estimatedImages, packObjectId, promptsPerClass, JSON.stringify(costsPerClass)],
+      );
+    });
+
+    return { ok: true };
+  });
+
+  app.patch("/api/admin/packs/:id", async (req) => {
+    requireAdmin(req);
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) throw httpError(400, "id invalid");
+    const b = req.body ?? {};
+    const patch = b.patch && typeof b.patch === "object" ? b.patch : null;
+    if (!patch) throw httpError(400, "patch required");
+
+    await withTx(pool, async (db) => {
+      const { rows } = await db.query(`select * from style_packs where id = $1`, [id]);
+      if (!rows[0]) throw httpError(404, "pack not found");
+      const cur = rows[0];
+      const next = {
+        slug: patch.slug != null ? String(patch.slug) : cur.slug,
+        title: patch.title != null ? String(patch.title) : cur.title,
+        description: patch.description != null ? String(patch.description) : cur.description,
+        status: patch.status === "hidden" ? "hidden" : patch.status === "active" ? "active" : cur.status,
+        preview_urls: patch.previewUrls ? JSON.stringify(patch.previewUrls) : cur.preview_urls,
+        estimated_images: patch.estimatedImages != null ? Math.max(1, Math.round(Number(patch.estimatedImages))) : cur.estimated_images,
+        pack_object_id: patch.packObjectId != null ? String(patch.packObjectId) : cur.pack_object_id,
+        prompts_per_class: patch.promptsPerClass != null ? Math.max(0, Math.round(Number(patch.promptsPerClass))) : cur.prompts_per_class,
+        costs_per_class: patch.costsPerClass ? JSON.stringify(patch.costsPerClass) : cur.costs_per_class,
+      };
+      await db.query(
+        `update style_packs
+         set slug=$2,title=$3,description=$4,status=$5,preview_urls=$6::jsonb,estimated_images=$7,pack_object_id=$8,prompts_per_class=$9,costs_per_class=$10::jsonb,updated_at=now()
+         where id=$1`,
+        [id, next.slug, next.title, next.description, next.status, next.preview_urls, next.estimated_images, next.pack_object_id, next.prompts_per_class, next.costs_per_class],
+      );
+    });
+
+    return { ok: true };
+  });
+
+  app.get("/api/admin/promos", async (req) => {
+    requireAdmin(req);
+    const rows = await withTx(pool, async (db) => {
+      const { rows } = await db.query(
+        `select id, title, caption, kind, status, cover_url, media_urls, tags, created_at, updated_at
+         from promos
+         order by updated_at desc`,
+      );
+      return rows;
+    });
+    return { ok: true, promos: rows };
+  });
+
+  app.post("/api/admin/promos", async (req) => {
+    requireAdmin(req);
+    const b = req.body ?? {};
+    const id = b.id ? String(b.id) : null;
+    const title = b.title ? String(b.title) : null;
+    const caption = b.caption ? String(b.caption) : null;
+    const kind = b.kind === "video" ? "video" : b.kind === "photo" ? "photo" : "text";
+    if (!id || !title || !caption) throw httpError(400, "id,title,caption required");
+    const status = b.status === "hidden" ? "hidden" : "active";
+    const coverUrl = b.coverUrl ? String(b.coverUrl) : null;
+    const mediaUrls = Array.isArray(b.mediaUrls) ? b.mediaUrls.map((x) => String(x)).filter(Boolean) : [];
+    const tags = Array.isArray(b.tags) ? b.tags.map((x) => String(x)).filter(Boolean) : [];
+
+    await withTx(pool, async (db) => {
+      await db.query(
+        `
+        insert into promos (id, title, caption, kind, status, cover_url, media_urls, tags)
+        values ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::text[])
+        on conflict (id) do update
+          set title=excluded.title,
+              caption=excluded.caption,
+              kind=excluded.kind,
+              status=excluded.status,
+              cover_url=excluded.cover_url,
+              media_urls=excluded.media_urls,
+              tags=excluded.tags,
+              updated_at=now()
+        `,
+        [id, title, caption, kind, status, coverUrl, JSON.stringify(mediaUrls), tags],
+      );
+    });
+
+    return { ok: true };
+  });
+
+  app.delete("/api/admin/promos/:id", async (req) => {
+    requireAdmin(req);
+    const id = String(req.params.id);
+    await withTx(pool, (db) => db.query(`delete from promos where id = $1`, [id]));
+    return { ok: true };
+  });
+
+  app.get("/api/admin/users", async (req) => {
+    requireAdmin(req);
+    const rows = await withTx(pool, async (db) => {
+      const { rows } = await db.query(
+        `
+        select u.id, u.tg_id, u.username, u.created_at, u.last_seen_at,
+               a.status as avatar_status, a.astria_model_id, a.last_trained_at
+        from users u
+        left join avatars a on a.user_id = u.id
+        order by u.created_at desc
+        limit 300
+        `,
+      );
+      return rows;
+    });
+    return { ok: true, users: rows };
+  });
+
+  app.delete("/api/admin/users/:id", async (req) => {
+    requireAdmin(req);
+    const id = String(req.params.id);
+    await withTx(pool, async (db) => {
+      await db.query(`delete from users where id = $1`, [id]);
+    });
+    return { ok: true };
+  });
+
+  app.get("/api/admin/partners", async (req) => {
+    requireAdmin(req);
+    const rows = await withTx(pool, async (db) => {
+      const { rows } = await db.query(
+        `
+        select p.id, p.public_id, p.status, p.client_code, p.team_code, p.parent_partner_id,
+               u.username, u.tg_id, p.created_at,
+               b.available_rub, b.locked_rub, b.paid_out_rub
+        from partners p
+        join users u on u.id = p.user_id
+        left join partner_balances b on b.partner_id = p.id
+        order by p.created_at desc
+        limit 300
+        `,
+      );
+      return rows;
+    });
+    return { ok: true, partners: rows };
+  });
+
+  app.post("/api/admin/partners/:publicId/block", async (req) => {
+    requireAdmin(req);
+    const publicId = Number(req.params.publicId);
+    if (!Number.isFinite(publicId)) throw httpError(400, "publicId invalid");
+    const b = req.body ?? {};
+    const blocked = Boolean(b.blocked);
+    await withTx(pool, async (db) => {
+      await db.query(`update partners set status = $2 where public_id = $1`, [publicId, blocked ? "blocked" : "active"]);
+    });
+    return { ok: true };
+  });
+
+  app.post("/api/admin/partners/:publicId/adjust-balance", async (req) => {
+    requireAdmin(req);
+    const publicId = Number(req.params.publicId);
+    if (!Number.isFinite(publicId)) throw httpError(400, "publicId invalid");
+    const b = req.body ?? {};
+    const deltaRub = Math.round(Number(b.deltaRub || 0));
+    const reason = b.reason ? String(b.reason) : null;
+    if (!Number.isFinite(deltaRub) || deltaRub === 0 || !reason || reason.trim().length < 3) {
+      throw httpError(400, "deltaRub (non-zero) and reason required");
+    }
+    await withTx(pool, async (db) => {
+      const { rows } = await db.query(`select id from partners where public_id = $1`, [publicId]);
+      const p = rows[0];
+      if (!p) throw httpError(404, "partner not found");
+      await db.query(
+        `insert into partner_balances (partner_id, available_rub, locked_rub, paid_out_rub)
+         values ($1, 0, 0, 0)
+         on conflict (partner_id) do nothing`,
+        [p.id],
+      );
+      await db.query(
+        `update partner_balances set available_rub = greatest(0, available_rub + $2), updated_at = now() where partner_id = $1`,
+        [p.id, deltaRub],
+      );
+      await db.query(
+        `insert into partner_ledger (partner_id, entry_type, amount_rub, meta)
+         values ($1, 'admin.adjust_balance', $2, $3::jsonb)`,
+        [p.id, deltaRub, JSON.stringify({ reason })],
+      );
+    });
+    return { ok: true };
+  });
+
+  app.get("/api/admin/orders", async (req) => {
+    requireAdmin(req);
+    const rows = await withTx(pool, async (db) => {
+      const { rows } = await db.query(
+        `
+        select o.id, o.plan_id, o.amount_rub, o.status, o.created_at, o.paid_at,
+               u.username, u.tg_id,
+               p.public_id as partner_public_id, o.attribution_kind
+        from orders o
+        join users u on u.id = o.user_id
+        left join partners p on p.id = o.attribution_partner_id
+        order by o.created_at desc
+        limit 300
+        `,
+      );
+      return rows;
+    });
+    return { ok: true, orders: rows };
+  });
+
+  app.get("/api/admin/sessions", async (req) => {
+    requireAdmin(req);
+    const rows = await withTx(pool, async (db) => {
+      const { rows } = await db.query(
+        `
+        select s.id, s.mode, s.pack_id, s.title, s.status, s.created_at, s.updated_at,
+               u.username, u.tg_id,
+               s.order_id
+        from photo_sessions s
+        join users u on u.id = s.user_id
+        order by s.created_at desc
+        limit 300
+        `,
+      );
+      return rows;
+    });
+    return { ok: true, sessions: rows };
+  });
+
+  // Track referral clicks (client/team). Keep it simple for now.
+  app.post("/api/ref/click", async (req) => {
+    const body = req.body ?? {};
+    const code = body.code ? String(body.code) : "";
+    const parsed = parseReferralCode(code);
+    if (!parsed) throw httpError(400, "Invalid code");
+    const ref = await withTx(pool, async (db) => {
+      const partner = await resolvePartnerByCode(db, code);
+      await db.query(
+        `insert into referral_clicks (kind, code, partner_id, ip, ua) values ($1, $2, $3, $4, $5)`,
+        [
+          parsed.kind,
+          code,
+          partner?.id ?? null,
+          req.ip ?? null,
+          req.headers["user-agent"] ? String(req.headers["user-agent"]) : null,
+        ],
+      );
+      return partner;
+    });
+    return { ok: true, partnerPublicId: ref?.public_id ?? null };
+  });
+
+  // DEBUG auth for now: create/update user by telegram id.
+  app.post("/api/debug/auth", async (req) => {
+    const body = req.body ?? {};
+    const tgId = Number(body.tgId);
+    if (!Number.isFinite(tgId)) throw httpError(400, "tgId is required");
+    const username = body.username ? String(body.username) : null;
+    const user = await withTx(pool, (db) => upsertUser(db, { tgId, username }));
+    return { ok: true, user };
+  });
+
+  // Partner registration (MLM team link can be provided)
+  app.post("/api/partner/register", async (req) => {
+    const body = req.body ?? {};
+    const auth = requireTelegramAuth(req);
+    const tgId = Number(auth.user.id);
+    const username = auth.user.username ? `@${String(auth.user.username).replace(/^@/, "")}` : body.username ? String(body.username) : null;
+    const teamCode = body.teamCode ? String(body.teamCode) : null;
+
+    const partner = await withTx(pool, async (db) => {
+      const user = await upsertUser(db, { tgId, username });
+      const p = await ensurePartner(db, { userId: user.id, teamCode });
+      return p;
+    });
+
+    return { ok: true, partner };
+  });
+
+  // Client creates an order (optionally with client referral code).
+  app.post("/api/client/order", async (req) => {
+    const body = req.body ?? {};
+    const auth = requireTelegramAuth(req);
+    const tgId = Number(auth.user.id);
+    const username = auth.user.username ? `@${String(auth.user.username).replace(/^@/, "")}` : body.username ? String(body.username) : null;
+    const planId = body.planId === "pro" ? "pro" : "standard";
+    const clientCode = body.clientCode ? String(body.clientCode) : null;
+
+    const order = await withTx(pool, async (db) => {
+      const user = await upsertUser(db, { tgId, username });
+      return await createOrder(db, { userId: user.id, planId, clientCode });
+    });
+
+    return { ok: true, order };
+  });
+
+  // Client: "upload" dataset (JSON placeholder) + start avatar training job.
+  app.post("/api/client/avatar/start", async (req) => {
+    const body = req.body ?? {};
+    const auth = requireTelegramAuth(req);
+    const tgId = Number(auth.user.id);
+    const username = auth.user.username ? `@${String(auth.user.username).replace(/^@/, "")}` : body.username ? String(body.username) : null;
+    const clientCode = body.clientCode ? String(body.clientCode) : null;
+    const photoUrls = Array.isArray(body.photoUrls) ? body.photoUrls.map((x) => String(x)).filter(Boolean) : [];
+    if (photoUrls.length < 4) throw httpError(400, "Need at least 4 photos");
+
+    const res = await withTx(pool, async (db) => {
+      const user = await upsertUser(db, { tgId, username });
+      if (clientCode) await ensureClientAttribution(db, { userId: user.id, clientCode });
+
+      const { rows: dsRows } = await db.query(
+        `insert into datasets (user_id, status, uploaded_count) values ($1, 'ready', $2) returning id`,
+        [user.id, photoUrls.length],
+      );
+      const datasetId = dsRows[0].id;
+      for (const url of photoUrls.slice(0, 40)) {
+        await db.query(`insert into dataset_images (dataset_id, url) values ($1, $2)`, [datasetId, url]);
+      }
+
+      await db.query(
+        `insert into avatars (user_id, status) values ($1, 'training')
+         on conflict (user_id) do update
+           set status = 'training', updated_at = now(), deleted_at = null`,
+        [user.id],
+      );
+
+      const { rows: jobRows } = await db.query(
+        `insert into jobs (kind, status, progress, payload) values ('avatar.train','queued',0,$1::jsonb) returning id`,
+        [JSON.stringify({ userId: user.id })],
+      );
+
+      return { userId: user.id, jobId: jobRows[0].id };
+    });
+
+    return { ok: true, ...res };
+  });
+
+  app.get("/api/client/avatar", async (req) => {
+    const auth = requireTelegramAuth(req);
+    const tgId = Number(auth.user.id);
+    const out = await withTx(pool, async (db) => {
+      const { rows: uRows } = await db.query(`select id from users where tg_id = $1`, [tgId]);
+      const userId = uRows?.[0]?.id;
+      if (!userId) return { status: "none" };
+      const { rows: aRows } = await db.query(`select status, astria_model_id, last_trained_at from avatars where user_id = $1`, [userId]);
+      const a = aRows?.[0];
+      return a ? { status: a.status, astriaModelId: a.astria_model_id, lastTrainedAt: a.last_trained_at } : { status: "none" };
+    });
+    return { ok: true, avatar: out };
+  });
+
+  // Create a photosession (pack/custom). Requires a ready avatar.
+  app.post("/api/client/sessions", async (req) => {
+    const body = req.body ?? {};
+    const auth = requireTelegramAuth(req);
+    const tgId = Number(auth.user.id);
+    const planId = body.planId === "pro" ? "pro" : "standard";
+    const orderId = body.orderId ? String(body.orderId) : null;
+    const mode = body.mode === "custom" ? "custom" : "pack";
+    const packId = body.packId ? Number(body.packId) : null;
+    const prompt = body.prompt ? String(body.prompt) : null;
+    const negative = body.negative ? String(body.negative) : null;
+    const settings = body.settings && typeof body.settings === "object" ? body.settings : {};
+    const count = Math.max(1, Math.min(60, Number(settings.count ?? (planId === "pro" ? 30 : 20))));
+
+    const res = await withTx(pool, async (db) => {
+      const { rows: uRows } = await db.query(`select id, username from users where tg_id = $1`, [tgId]);
+      const u = uRows[0];
+      if (!u) throw httpError(404, "User not found (auth first)");
+
+      const { rows: aRows } = await db.query(`select status from avatars where user_id = $1`, [u.id]);
+      if (!aRows[0] || aRows[0].status !== "ready") throw httpError(400, "Avatar is not ready");
+
+      let title = null;
+      if (mode === "pack") {
+        if (!Number.isFinite(packId)) throw httpError(400, "packId is required");
+        const { rows: pRows } = await db.query(`select title from style_packs where id = $1 and status = 'active'`, [packId]);
+        if (!pRows[0]) throw httpError(404, "Pack not found");
+        title = pRows[0].title;
+      } else {
+        title = "Custom";
+      }
+
+      const { rows: sRows } = await db.query(
+        `insert into photo_sessions (user_id, order_id, mode, pack_id, title, prompt, negative, settings, status)
+         values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,'queued')
+         returning id, created_at`,
+        [u.id, orderId, mode, mode === "pack" ? packId : null, title, prompt, negative, JSON.stringify({ ...settings, count }),],
+      );
+
+      const sessionId = sRows[0].id;
+      await db.query(
+        `insert into jobs (kind, status, progress, payload) values ('session.generate','queued',0,$1::jsonb)`,
+        [JSON.stringify({ sessionId, count })],
+      );
+
+      return { sessionId, createdAt: sRows[0].created_at };
+    });
+
+    return { ok: true, ...res };
+  });
+
+  app.get("/api/client/sessions", async (req) => {
+    const auth = requireTelegramAuth(req);
+    const tgId = Number(auth.user.id);
+    const res = await withTx(pool, async (db) => {
+      const { rows: uRows } = await db.query(`select id from users where tg_id = $1`, [tgId]);
+      const u = uRows[0];
+      if (!u) return [];
+      const { rows: sRows } = await db.query(
+        `select id, mode, pack_id, title, prompt, settings, status, created_at
+         from photo_sessions
+         where user_id = $1
+         order by created_at desc
+         limit 50`,
+        [u.id],
+      );
+      const ids = sRows.map((s) => s.id);
+      const photos = ids.length
+        ? await db.query(
+            `select session_id, id, url, label, created_at from generated_photos where session_id = any($1::uuid[]) order by created_at asc`,
+            [ids],
+          )
+        : { rows: [] };
+      const bySession = new Map();
+      for (const p of photos.rows) {
+        const list = bySession.get(p.session_id) ?? [];
+        list.push({ id: p.id, url: p.url, label: p.label, createdAt: p.created_at });
+        bySession.set(p.session_id, list);
+      }
+      return sRows.map((s) => ({
+        id: s.id,
+        mode: s.mode,
+        packId: s.pack_id,
+        title: s.title,
+        prompt: s.prompt,
+        settings: s.settings,
+        status: s.status,
+        createdAt: s.created_at,
+        photos: bySession.get(s.id) ?? [],
+      }));
+    });
+    return { ok: true, sessions: res };
+  });
+
+  // Simulate payment webhook: mark paid + allocate commissions.
+  app.post("/api/orders/:id/mark-paid", async (req) => {
+    const orderId = String(req.params.id);
+    const res = await withTx(pool, async (db) => {
+      const { rows } = await db.query(
+        `update orders set status = 'paid', paid_at = now() where id = $1 and status <> 'paid' returning id`,
+        [orderId],
+      );
+      if (!rows.length) {
+        // Already paid or not found; still try allocating (idempotent)
+      }
+      const alloc = await allocateCommissionsForOrder(db, orderId);
+      return alloc;
+    });
+    return { ok: true, result: res };
+  });
+
+  // Provider-agnostic payment webhook (idempotent by external_event_id).
+  // For production: verify provider signatures + map provider statuses precisely.
+  app.post("/api/payments/webhook", async (req) => {
+    const body = req.body ?? {};
+    const provider = body.provider ? String(body.provider) : "unknown";
+    const eventId = body.eventId ? String(body.eventId) : null;
+    const orderId = body.orderId ? String(body.orderId) : null;
+    const status = body.status ? String(body.status) : null;
+    if (!eventId || !orderId || !status) throw httpError(400, "provider,eventId,orderId,status are required");
+
+    const res = await withTx(pool, async (db) => {
+      await db.query(
+        `insert into payment_events (provider, external_event_id, payload)
+         values ($1,$2,$3::jsonb)
+         on conflict (provider, external_event_id) do nothing`,
+        [provider, eventId, JSON.stringify(body)],
+      );
+
+      if (status === "paid") {
+        await db.query(
+          `update orders set status = 'paid', paid_at = coalesce(paid_at, now()) where id = $1`,
+          [orderId],
+        );
+        await allocateCommissionsForOrder(db, orderId);
+      }
+
+      if (status === "refunded") {
+        await db.query(`update orders set status = 'refunded' where id = $1`, [orderId]);
+        // Prototype: not reversing commissions yet.
+      }
+
+      return { ok: true };
+    });
+
+    return { ok: true, result: res };
+  });
+
+  app.get("/api/partner/:publicId/dashboard", async (req) => {
+    const publicId = Number(req.params.publicId);
+    if (!Number.isFinite(publicId)) throw httpError(400, "publicId is invalid");
+    const data = await withTx(pool, (db) => getPartnerDashboard(db, publicId));
+    return { ok: true, ...data };
+  });
+
+  app.get("/api/partner/:publicId/team", async (req) => {
+    const publicId = Number(req.params.publicId);
+    if (!Number.isFinite(publicId)) throw httpError(400, "publicId is invalid");
+    const data = await withTx(pool, (db) => getPartnerTeam(db, publicId));
+    return { ok: true, ...data };
+  });
+
+  app.get("/api/partner/:publicId/clients", async (req) => {
+    const publicId = Number(req.params.publicId);
+    if (!Number.isFinite(publicId)) throw httpError(400, "publicId is invalid");
+    const data = await withTx(pool, (db) => getPartnerClients(db, publicId));
+    return { ok: true, ...data };
+  });
+
+  app.post("/api/partner/:publicId/withdrawals", async (req) => {
+    const publicId = Number(req.params.publicId);
+    if (!Number.isFinite(publicId)) throw httpError(400, "publicId is invalid");
+    const body = req.body ?? {};
+    const amountRub = Math.round(Number(body.amountRub || 0));
+    if (!Number.isFinite(amountRub) || amountRub <= 0) throw httpError(400, "amountRub is invalid");
+
+    const res = await withTx(pool, async (db) => {
+      const cfg = await readConfig(db);
+      if (amountRub < cfg.payout.minWithdrawRub) throw httpError(400, "Below minWithdrawRub");
+
+      const { rows: partners } = await db.query(`select id from partners where public_id = $1`, [publicId]);
+      const p = partners[0];
+      if (!p) throw httpError(404, "Partner not found");
+
+      const { rows: balRows } = await db.query(
+        `select available_rub, locked_rub from partner_balances where partner_id = $1 for update`,
+        [p.id],
+      );
+      const bal = balRows[0] ?? { available_rub: 0, locked_rub: 0 };
+      if (bal.available_rub < amountRub) throw httpError(400, "Insufficient balance");
+
+      const { rows: wRows } = await db.query(
+        `insert into withdrawal_requests (partner_id, amount_rub, status) values ($1, $2, 'pending') returning id, status, created_at`,
+        [p.id, amountRub],
+      );
+      await db.query(
+        `update partner_balances
+         set available_rub = available_rub - $2,
+             locked_rub = locked_rub + $2,
+             updated_at = now()
+         where partner_id = $1`,
+        [p.id, amountRub],
+      );
+      await db.query(
+        `insert into partner_ledger (partner_id, entry_type, amount_rub, withdrawal_id, meta)
+         values ($1, 'withdraw.request', $2, $3, $4::jsonb)`,
+        [p.id, -amountRub, wRows[0].id, JSON.stringify({ publicId })],
+      );
+      return wRows[0];
+    });
+
+    return { ok: true, withdrawal: res };
+  });
+
+  // Admin: review withdrawals (very simple auth via x-admin-token)
+  app.get("/api/admin/withdrawals", async (req) => {
+    requireAdmin(req);
+    const rows = await withTx(pool, async (db) => {
+      const { rows } = await db.query(
+        `select id, partner_id, amount_rub, status, created_at, reviewed_at, note from withdrawal_requests order by created_at desc limit 200`,
+      );
+      return rows;
+    });
+    return { ok: true, rows };
+  });
+
+  app.post("/api/admin/withdrawals/:id/approve", async (req) => {
+    requireAdmin(req);
+    const id = String(req.params.id);
+    const body = req.body ?? {};
+    const note = body.note ? String(body.note) : null;
+
+    const res = await withTx(pool, async (db) => {
+      const { rows: wRows } = await db.query(
+        `select id, partner_id, amount_rub, status from withdrawal_requests where id = $1 for update`,
+        [id],
+      );
+      const w = wRows[0];
+      if (!w) throw httpError(404, "Withdrawal not found");
+      if (w.status !== "pending") return { ok: true, status: w.status };
+
+      await db.query(
+        `update withdrawal_requests set status = 'approved', reviewed_at = now(), note = $2 where id = $1`,
+        [id, note],
+      );
+      await db.query(
+        `update partner_balances
+         set locked_rub = greatest(0, locked_rub - $2),
+             paid_out_rub = paid_out_rub + $2,
+             updated_at = now()
+         where partner_id = $1`,
+        [w.partner_id, w.amount_rub],
+      );
+      await db.query(
+        `insert into partner_ledger (partner_id, entry_type, amount_rub, withdrawal_id, meta)
+         values ($1, 'withdraw.approve', $2, $3, $4::jsonb)`,
+        [w.partner_id, -w.amount_rub, w.id, JSON.stringify({ note })],
+      );
+      return { ok: true, status: "approved" };
+    });
+
+    return { ok: true, result: res };
+  });
+
+  app.post("/api/admin/withdrawals/:id/reject", async (req) => {
+    requireAdmin(req);
+    const id = String(req.params.id);
+    const body = req.body ?? {};
+    const note = body.note ? String(body.note) : "rejected";
+
+    const res = await withTx(pool, async (db) => {
+      const { rows: wRows } = await db.query(
+        `select id, partner_id, amount_rub, status from withdrawal_requests where id = $1 for update`,
+        [id],
+      );
+      const w = wRows[0];
+      if (!w) throw httpError(404, "Withdrawal not found");
+      if (w.status !== "pending") return { ok: true, status: w.status };
+
+      await db.query(
+        `update withdrawal_requests set status = 'rejected', reviewed_at = now(), note = $2 where id = $1`,
+        [id, note],
+      );
+      // Return locked funds back to available
+      await db.query(
+        `update partner_balances
+         set locked_rub = greatest(0, locked_rub - $2),
+             available_rub = available_rub + $2,
+             updated_at = now()
+         where partner_id = $1`,
+        [w.partner_id, w.amount_rub],
+      );
+      await db.query(
+        `insert into partner_ledger (partner_id, entry_type, amount_rub, withdrawal_id, meta)
+         values ($1, 'withdraw.reject', $2, $3, $4::jsonb)`,
+        [w.partner_id, w.amount_rub, w.id, JSON.stringify({ note })],
+      );
+      return { ok: true, status: "rejected" };
+    });
+
+    return { ok: true, result: res };
+  });
+
+  const port = Number(process.env.PORT || 8787);
+  const host = process.env.HOST || "127.0.0.1";
+  await app.listen({ port, host });
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

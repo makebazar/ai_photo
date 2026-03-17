@@ -1,0 +1,36 @@
+{
+  "name": "ai-photo-prototype",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Interactive high-fidelity prototype for AI photosessions (Client/Partner TMA + Admin Web).",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "server:dev": "node --watch server/index.mjs",
+    "server:start": "node server/index.mjs",
+    "worker:dev": "node --watch server/worker.mjs",
+    "db:migrate": "node server/migrate.mjs"
+  },
+  "dependencies": {
+    "@fastify/cors": "^9.0.0",
+    "clsx": "^2.1.1",
+    "fastify": "^4.26.2",
+    "framer-motion": "^11.0.0",
+    "lucide-react": "^0.476.0",
+    "pg": "^8.12.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.66",
+    "@types/react-dom": "^18.2.22",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.19",
+    "postcss": "^8.4.38",
+    "tailwindcss": "^3.4.3",
+    "typescript": "^5.5.4",
+    "vite": "^5.2.12"
+  }
+}

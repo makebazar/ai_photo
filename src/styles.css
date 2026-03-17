@@ -1,0 +1,93 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-void text-white antialiased;
+  }
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .shimmer-surface {
+    background-image: linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.02),
+      rgba(255, 255, 255, 0.06),
+      rgba(255, 255, 255, 0.02)
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.2s linear infinite;
+  }
+}
+
+@layer base {
+  /* Performance mode: reduce expensive GPU effects (blur, heavy shadows). */
+  [data-effects="lite"] .backdrop-blur,
+  [data-effects="lite"] .backdrop-blur-sm,
+  [data-effects="lite"] .backdrop-blur-md,
+  [data-effects="lite"] .backdrop-blur-lg,
+  [data-effects="lite"] .backdrop-blur-xl,
+  [data-effects="lite"] .backdrop-blur-2xl,
+  [data-effects="lite"] .backdrop-blur-3xl {
+    backdrop-filter: none !important;
+  }
+
+  [data-effects="lite"] .shadow-neon,
+  [data-effects="lite"] .shadow-pro {
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06) !important;
+  }
+
+  [data-effects="lite"] .blur,
+  [data-effects="lite"] .blur-sm,
+  [data-effects="lite"] .blur-md,
+  [data-effects="lite"] .blur-lg,
+  [data-effects="lite"] .blur-xl,
+  [data-effects="lite"] .blur-2xl,
+  [data-effects="lite"] .blur-3xl {
+    filter: none !important;
+  }
+
+  [data-effects="lite"] .shimmer-surface {
+    animation: none !important;
+    background-image: none !important;
+  }
+
+  [data-effects="lite"] * {
+    text-rendering: optimizeLegibility;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 200% 50%;
+  }
+}

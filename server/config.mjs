@@ -1,0 +1,41 @@
+const DEFAULT_CONFIG = {
+  planPricesRub: { standard: 499, pro: 899 },
+  planMeta: {
+    standard: { title: "Стандарт", tagline: "Быстро, красиво и натурально.", photosCount: 20 },
+    pro: {
+      title: "PRO / Кинематографичный",
+      tagline: "Максимум деталей и “киношный” свет.",
+      photosCount: 30,
+      featured: true,
+      badge: "Хит",
+    },
+  },
+  commissionsPct: { directClient: 30, teamL1: 10, teamL2: 5 },
+  payout: { minWithdrawRub: 500, slaText: "Обычно 1–6 часов (анти‑фрод)" },
+};
+
+export function getDefaultConfig() {
+  return DEFAULT_CONFIG;
+}
+
+export async function ensureConfigRow(db) {
+  await db.query(
+    "insert into app_config (id, config) values (1, $1::jsonb) on conflict (id) do nothing",
+    [JSON.stringify(DEFAULT_CONFIG)],
+  );
+}
+
+export async function readConfig(db) {
+  const { rows } = await db.query("select config from app_config where id = 1");
+  const cfg = rows?.[0]?.config;
+  if (!cfg) return DEFAULT_CONFIG;
+  return {
+    ...DEFAULT_CONFIG,
+    ...cfg,
+    planPricesRub: { ...DEFAULT_CONFIG.planPricesRub, ...(cfg.planPricesRub ?? {}) },
+    planMeta: { ...DEFAULT_CONFIG.planMeta, ...(cfg.planMeta ?? {}) },
+    commissionsPct: { ...DEFAULT_CONFIG.commissionsPct, ...(cfg.commissionsPct ?? {}) },
+    payout: { ...DEFAULT_CONFIG.payout, ...(cfg.payout ?? {}) },
+  };
+}
+
