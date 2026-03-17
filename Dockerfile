@@ -21,5 +21,4 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/server ./server
 
 EXPOSE 8787
-CMD ["node", "server/index.mjs"]
-
+CMD ["sh", "-c", "node server/migrate.mjs && node server/index.mjs"]
