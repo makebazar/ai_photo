@@ -342,5 +342,4 @@ COMMENT ON COLUMN referral_links.utm_medium IS 'UTM: тип трафика (cpc,
 COMMENT ON COLUMN referral_links.utm_campaign IS 'UTM: название кампании';
 COMMENT ON COLUMN referral_links.utm_content IS 'UTM: содержание объявления';
 COMMENT ON COLUMN referral_links.utm_term IS 'UTM: ключевое слово';
-COMMENT ON TABLE partner_hierarchy IS 'Материализованное представление иерархии партнёров (MLM дерево)';
 COMMENT ON VIEW partner_stats IS 'Статистика партнёра: клиенты, команда, доходы';
