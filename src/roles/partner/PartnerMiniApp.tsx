@@ -1,4 +1,4 @@
-import { Banknote, Copy, TrendingUp, Wallet } from "lucide-react";
+import { Banknote, Copy, Link, TrendingUp, Wallet } from "lucide-react";
 import * as React from "react";
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
@@ -8,6 +8,7 @@ import { SmartImage } from "../../components/ui/SmartImage";
 import { useToast } from "../../components/ui/Toast";
 import { cn } from "../../lib/cn";
 import { usePublicConfig } from "../../lib/publicConfig";
+import { ReferralLinksManager } from "../../components/ReferralLinksManager";
 import {
   partnerClients,
   partnerDownline,
@@ -44,7 +45,7 @@ export function PartnerMiniApp() {
     }),
     [cfg.commissionsPct.directClient, cfg.commissionsPct.teamL1, cfg.commissionsPct.teamL2, cfg.payout.minWithdrawRub, cfg.payout.slaText],
   );
-  const [view, setView] = React.useState<"dashboard" | "team">("dashboard");
+  const [view, setView] = React.useState<"dashboard" | "team" | "ref">("dashboard");
   const [withdrawOpen, setWithdrawOpen] = React.useState(false);
   const [viewerOpen, setViewerOpen] = React.useState(false);
   const [viewerIndex, setViewerIndex] = React.useState(0);
@@ -411,7 +412,43 @@ export function PartnerMiniApp() {
             ))}
           </div>
         </div>
+
+        {/* Navigation to Ref Links */}
+        <Card className="p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="text-sm font-semibold text-white/90">Реферальные ссылки</div>
+              <div className="mt-1 text-xs text-white/60">
+                Создавайте ссылки с UTM-метками для разных каналов
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant="secondary"
+              className="shrink-0 whitespace-nowrap"
+              onClick={() => setView("ref")}
+            >
+              <Link size={16} />
+              Открыть
+            </Button>
+          </div>
+        </Card>
       </div>
+      ) : view === "ref" ? (
+        <div className="space-y-5">
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <div className="text-xl font-semibold leading-tight text-white/95">Реферальные ссылки</div>
+              <div className="mt-1 text-sm text-white/65">
+                Управляйте ссылками, отслеживайте клики и конверсии.
+              </div>
+            </div>
+            <Button variant="secondary" size="sm" className="shrink-0 whitespace-nowrap" onClick={() => setView("dashboard")}>
+              Назад
+            </Button>
+          </div>
+          <ReferralLinksManager />
+        </div>
       ) : (
         <PartnerTeamScreen
           onBack={() => setView("dashboard")}

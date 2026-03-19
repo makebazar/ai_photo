@@ -1,5 +1,6 @@
 import * as React from "react";
 import type { Role } from "../roles/types";
+import { getRoleFromStartParam } from "./tg";
 
 export type AppRoute = "/client" | "/partner" | "/admin";
 
@@ -44,5 +45,37 @@ function getSnapshot() {
 
 export function usePathname() {
   return React.useSyncExternalStore(subscribe, getSnapshot, () => "/");
+}
+
+/**
+ * Get initial role based on:
+ * 1. URL pathname (/client, /partner, /admin)
+ * 2. Telegram start_param (from WebApp initData)
+ * 3. localStorage (last used role)
+ * 4. Default to "client"
+ */
+export function getInitialRole(): Role {
+  // 1. Check URL pathname first
+  const pathname = getSnapshot();
+  const roleFromPath = routeToRole(pathname);
+  if (roleFromPath) return roleFromPath;
+
+  // 2. Check Telegram start_param
+  const roleFromTg = getRoleFromStartParam();
+  if (roleFromTg) return roleFromTg;
+
+  // 3. Fallback to localStorage
+  const LS_LAST_ROLE_KEY = "ai_photo_last_role_v1";
+  try {
+    const stored = localStorage.getItem(LS_LAST_ROLE_KEY);
+    if (stored === "client" || stored === "partner" || stored === "admin") {
+      return stored;
+    }
+  } catch {
+    // Ignore localStorage errors
+  }
+
+  // 4. Default to client
+  return "client";
 }
 

@@ -729,6 +729,64 @@ async function main() {
     return { ok: true, user };
   });
 
+  // Universal auth endpoint: login/register user with role detection from start_param
+  app.post("/api/auth/login", async (req) => {
+    const body = req.body ?? {};
+    const auth = requireTelegramAuth(req);
+    const tgId = Number(auth.user.id);
+    const username = auth.user.username ? String(auth.user.username) : null;
+    const role = auth.role || "client";
+    const startParam = auth.startParam;
+
+    const result = await withTx(pool, async (db) => {
+      const user = await upsertUser(db, { tgId, username });
+      
+      let partner = null;
+      let attribution = null;
+      
+      // Handle partner registration (if role is partner or start_param indicates team referral)
+      if (role === "partner" || (startParam && (startParam.startsWith("partner_") || startParam.startsWith("pt_") || startParam.startsWith("team_")))) {
+        const teamCode = startParam && startParam.includes("_") ? startParam.split("_")[1] : null;
+        partner = await ensurePartner(db, { userId: user.id, teamCode });
+      }
+      
+      // Handle client referral attribution
+      if (startParam && (startParam.startsWith("client_") || startParam.startsWith("cl_"))) {
+        const clientCode = startParam;
+        attribution = await ensureClientAttribution(db, { userId: user.id, clientCode });
+      } else if (startParam && !startParam.includes("_")) {
+        // Unknown code format - try as client referral code
+        try {
+          attribution = await ensureClientAttribution(db, { userId: user.id, clientCode: startParam });
+        } catch {
+          // Not a valid client code, ignore
+        }
+      }
+
+      return {
+        user: {
+          id: user.id,
+          tgId: user.tg_id,
+          username: user.username,
+        },
+        partner: partner ? {
+          id: partner.id,
+          publicId: partner.public_id,
+          clientCode: partner.client_code,
+          teamCode: partner.team_code,
+          status: partner.status,
+        } : null,
+        attribution: attribution ? {
+          partnerId: attribution.id,
+          code: attribution.client_code,
+        } : null,
+        role,
+      };
+    });
+
+    return { ok: true, ...result };
+  });
+
   // Partner registration (MLM team link can be provided)
   app.post("/api/partner/register", async (req) => {
     const body = req.body ?? {};
@@ -1119,6 +1177,335 @@ async function main() {
     });
 
     return { ok: true, result: res };
+  });
+
+  // ============================================
+  // Referral Links API
+  // ============================================
+
+  // Get partner's referral links
+  app.get("/api/ref/links", async (req) => {
+    const auth = requireTelegramAuth(req);
+    const tgId = Number(auth.user.id);
+
+    const links = await withTx(pool, async (db) => {
+      // Get partner by user
+      const { rows: pRows } = await db.query(
+        `select id from partners where user_id = (select id from users where tg_id = $1)`,
+        [tgId]
+      );
+      if (!pRows[0]) {
+        throw httpError(404, "Partner not found. Register as partner first.");
+      }
+      const partnerId = pRows[0].id;
+
+      // Get all links
+      const { rows } = await db.query(
+        `select 
+           id, kind, code, name, description, status,
+           utm_source, utm_medium, utm_campaign, utm_content, utm_term,
+           expires_at, max_uses, current_uses,
+           clicks, conversions, total_revenue_rub, total_earnings_rub,
+           created_at, updated_at
+         from referral_links
+         where partner_id = $1
+         order by created_at desc`,
+        [partnerId]
+      );
+
+      return rows.map((r) => ({
+        ...r,
+        // Generate full URL based on kind
+        url: r.kind === 'client' 
+          ? `t.me/${process.env.TELEGRAM_BOT_NAME || 'bot'}?start=${r.code}`
+          : `t.me/${process.env.TELEGRAM_PARTNER_BOT_NAME || 'bot'}?start=${r.code}`,
+      }));
+    });
+
+    return { ok: true, links };
+  });
+
+  // Create new referral link
+  app.post("/api/ref/links", async (req) => {
+    const auth = requireTelegramAuth(req);
+    const tgId = Number(auth.user.id);
+    const body = req.body ?? {};
+
+    const link = await withTx(pool, async (db) => {
+      // Get partner
+      const { rows: pRows } = await db.query(
+        `select id from partners where user_id = (select id from users where tg_id = $1)`,
+        [tgId]
+      );
+      if (!pRows[0]) {
+        throw httpError(404, "Partner not found");
+      }
+      const partnerId = pRows[0].id;
+
+      const kind = body.kind === 'team' ? 'team' : 'client';
+      const name = body.name ? String(body.name) : null;
+      const description = body.description ? String(body.description) : null;
+      const utmSource = body.utmSource ? String(body.utmSource) : null;
+      const utmMedium = body.utmMedium ? String(body.utmMedium) : null;
+      const utmCampaign = body.utmCampaign ? String(body.utmCampaign) : null;
+      const utmContent = body.utmContent ? String(body.utmContent) : null;
+      const utmTerm = body.utmTerm ? String(body.utmTerm) : null;
+      const expiresAt = body.expiresAt ? new Date(body.expiresAt) : null;
+      const maxUses = body.maxUses ? Math.max(1, Math.round(Number(body.maxUses))) : null;
+
+      const { rows } = await db.query(
+        `select * from create_referral_link($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [partnerId, kind, name, utmSource, utmMedium, utmCampaign, utmContent, utmTerm, expiresAt, maxUses]
+      );
+
+      return rows[0];
+    });
+
+    return { 
+      ok: true, 
+      link: {
+        ...link,
+        url: link.kind === 'client' 
+          ? `t.me/${process.env.TELEGRAM_BOT_NAME || 'bot'}?start=${link.code}`
+          : `t.me/${process.env.TELEGRAM_PARTNER_BOT_NAME || 'bot'}?start=${link.code}`,
+      }
+    };
+  });
+
+  // Update referral link
+  app.patch("/api/ref/links/:id", async (req) => {
+    const auth = requireTelegramAuth(req);
+    const tgId = Number(auth.user.id);
+    const linkId = String(req.params.id);
+    const body = req.body ?? {};
+
+    const link = await withTx(pool, async (db) => {
+      // Verify ownership
+      const { rows: pRows } = await db.query(
+        `select p.id from partners p 
+         join users u on u.id = p.user_id 
+         where u.tg_id = $1 and p.id = (select partner_id from referral_links where id = $2)`,
+        [tgId, linkId]
+      );
+      if (!pRows[0]) {
+        throw httpError(404, "Link not found");
+      }
+
+      const patches = [];
+      const values = [];
+      let paramIndex = 1;
+
+      if (body.name !== undefined) {
+        patches.push(`name = $${paramIndex++}`);
+        values.push(body.name ? String(body.name) : null);
+      }
+      if (body.description !== undefined) {
+        patches.push(`description = $${paramIndex++}`);
+        values.push(body.description ? String(body.description) : null);
+      }
+      if (body.status !== undefined) {
+        const status = ['active', 'inactive', 'expired'].includes(body.status) ? body.status : 'active';
+        patches.push(`status = $${paramIndex++}`);
+        values.push(status);
+      }
+      if (body.utmSource !== undefined) {
+        patches.push(`utm_source = $${paramIndex++}`);
+        values.push(body.utmSource ? String(body.utmSource) : null);
+      }
+      if (body.utmMedium !== undefined) {
+        patches.push(`utm_medium = $${paramIndex++}`);
+        values.push(body.utmMedium ? String(body.utmMedium) : null);
+      }
+      if (body.utmCampaign !== undefined) {
+        patches.push(`utm_campaign = $${paramIndex++}`);
+        values.push(body.utmCampaign ? String(body.utmCampaign) : null);
+      }
+
+      if (patches.length === 0) {
+        throw httpError(400, "No fields to update");
+      }
+
+      patches.push(`updated_at = now()`);
+      values.push(linkId);
+
+      const { rows } = await db.query(
+        `update referral_links set ${patches.join(', ')} where id = $${paramIndex} returning *`,
+        values
+      );
+
+      return rows[0];
+    });
+
+    return { 
+      ok: true, 
+      link: {
+        ...link,
+        url: link.kind === 'client' 
+          ? `t.me/${process.env.TELEGRAM_BOT_NAME || 'bot'}?start=${link.code}`
+          : `t.me/${process.env.TELEGRAM_PARTNER_BOT_NAME || 'bot'}?start=${link.code}`,
+      }
+    };
+  });
+
+  // Delete referral link
+  app.delete("/api/ref/links/:id", async (req) => {
+    const auth = requireTelegramAuth(req);
+    const tgId = Number(auth.user.id);
+    const linkId = String(req.params.id);
+
+    await withTx(pool, async (db) => {
+      // Verify ownership and delete
+      const { rows } = await db.query(
+        `delete from referral_links 
+         where id = $1 and partner_id = (select id from partners where user_id = (select id from users where tg_id = $2))`,
+        [linkId, tgId]
+      );
+      if (rows.length === 0) {
+        throw httpError(404, "Link not found");
+      }
+    });
+
+    return { ok: true };
+  });
+
+  // Track click on referral link (public endpoint, no auth required)
+  app.post("/api/ref/click", async (req) => {
+    const body = req.body ?? {};
+    const linkId = body.linkId ? String(body.linkId) : null;
+    const code = body.code ? String(body.code) : null;
+    const utm = body.utm || {};
+
+    if (!linkId && !code) {
+      throw httpError(400, "linkId or code required");
+    }
+
+    const result = await withTx(pool, async (db) => {
+      const { rows } = linkId
+        ? await db.query(`select * from track_referral_click($1, NULL, $2, $3, $4, $5, $6, $7, $8)`,
+            [linkId, null, null, utm.source || null, utm.medium || null, utm.campaign || null, utm.content || null, utm.term || null])
+        : await db.query(`select id from referral_links where code = $1`, [code]);
+
+      if (!rows[0]) {
+        throw httpError(404, "Link not found");
+      }
+
+      return { linkId: rows[0].id || rows[0].link_id };
+    });
+
+    return { ok: true, ...result };
+  });
+
+  // Get partner statistics
+  app.get("/api/partner/stats", async (req) => {
+    const auth = requireTelegramAuth(req);
+    const tgId = Number(auth.user.id);
+
+    const stats = await withTx(pool, async (db) => {
+      const { rows } = await db.query(
+        `select * from partner_stats 
+         where user_id = (select id from users where tg_id = $1)`,
+        [tgId]
+      );
+      return rows[0] || null;
+    });
+
+    if (!stats) {
+      throw httpError(404, "Partner not found");
+    }
+
+    return { ok: true, stats };
+  });
+
+  // Get downline (team hierarchy)
+  app.get("/api/partner/downline", async (req) => {
+    const auth = requireTelegramAuth(req);
+    const tgId = Number(auth.user.id);
+
+    const downline = await withTx(pool, async (db) => {
+      // Get partner
+      const { rows: pRows } = await db.query(
+        `select id from partners where user_id = (select id from users where tg_id = $1)`,
+        [tgId]
+      );
+      if (!pRows[0]) {
+        throw httpError(404, "Partner not found");
+      }
+      const partnerId = pRows[0].id;
+
+      // Get L1 partners (direct referrals)
+      const { rows: l1Rows } = await db.query(
+        `select p.*, u.username, u.tg_id,
+                (select count(*) from client_attribution ca where ca.partner_id = p.id) as clients_count,
+                (select coalesce(sum(o.amount_rub), 0) from orders o 
+                 join client_attribution ca on o.user_id = ca.user_id 
+                 where ca.partner_id = p.id and o.status = 'paid') as revenue_rub
+         from partners p
+         join users u on u.id = p.user_id
+         where p.parent_partner_id = $1 and p.status = 'active'
+         order by p.created_at desc`,
+        [partnerId]
+      );
+
+      // Get L2 partners (referrals of L1)
+      const l1Ids = l1Rows.map((r) => r.id);
+      const { rows: l2Rows } = l1Ids.length
+        ? await db.query(
+            `select p.*, u.username, u.tg_id, p.parent_partner_id,
+                    (select count(*) from client_attribution ca where ca.partner_id = p.id) as clients_count,
+                    (select coalesce(sum(o.amount_rub), 0) from orders o 
+                     join client_attribution ca on o.user_id = ca.user_id 
+                     where ca.partner_id = p.id and o.status = 'paid') as revenue_rub
+             from partners p
+             join users u on u.id = p.user_id
+             where p.parent_partner_id = any($1::uuid[]) and p.status = 'active'
+             order by p.created_at desc`,
+            [l1Ids]
+          )
+        : { rows: [] };
+
+      return {
+        level1: l1Rows.map((r) => ({
+          ...r,
+          children: l2Rows.filter((l2) => l2.parent_partner_id === r.id),
+        })),
+      };
+    });
+
+    return { ok: true, ...downline };
+  });
+
+  // Get client list for partner
+  app.get("/api/partner/clients", async (req) => {
+    const auth = requireTelegramAuth(req);
+    const tgId = Number(auth.user.id);
+
+    const clients = await withTx(pool, async (db) => {
+      const { rows: pRows } = await db.query(
+        `select id from partners where user_id = (select id from users where tg_id = $1)`,
+        [tgId]
+      );
+      if (!pRows[0]) {
+        throw httpError(404, "Partner not found");
+      }
+      const partnerId = pRows[0].id;
+
+      const { rows } = await db.query(
+        `select u.id, u.tg_id, u.username, u.created_at, u.last_seen_at,
+                ca.created_at as referred_at,
+                (select count(*) from orders o where o.user_id = u.id and o.status = 'paid') as orders_count,
+                (select coalesce(sum(o.amount_rub), 0) from orders o where o.user_id = u.id and o.status = 'paid') as total_spent_rub
+         from client_attribution ca
+         join users u on u.id = ca.user_id
+         where ca.partner_id = $1
+         order by ca.created_at desc
+         limit 100`,
+        [partnerId]
+      );
+
+      return rows;
+    });
+
+    return { ok: true, clients };
   });
 
   const port = Number(process.env.PORT || 8787);

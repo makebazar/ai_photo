@@ -2,20 +2,33 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import * as React from "react";
 import { ToastProvider } from "./components/ui/Toast";
 import { getInitialEffectsMode } from "./lib/effects";
-import { readLocalStorage, writeLocalStorage } from "./lib/storage";
-import { navigate, roleToRoute, routeToRole, usePathname } from "./lib/pathRouter";
+import { writeLocalStorage } from "./lib/storage";
+import { navigate, roleToRoute, routeToRole, usePathname, getInitialRole } from "./lib/pathRouter";
+import { initTelegramWebApp, getStartParam } from "./lib/tg";
 import { AdminDashboard } from "./roles/admin/AdminDashboard";
 import { ClientMiniApp } from "./roles/client/ClientMiniApp";
 import { PartnerMiniApp } from "./roles/partner/PartnerMiniApp";
 import type { Role } from "./roles/types";
 
 const LS_LAST_ROLE_KEY = "ai_photo_last_role_v1";
+const LS_START_PARAM_KEY = "ai_photo_start_param_v1";
 
 export default function App() {
   const reduceMotion = useReducedMotion();
   const pathname = usePathname();
-  const [role, setRoleState] = React.useState<Role>("client");
+  const [role, setRoleState] = React.useState<Role>(() => getInitialRole());
   const effects = React.useMemo(() => getInitialEffectsMode(), []);
+
+  // Initialize Telegram WebApp on mount
+  React.useEffect(() => {
+    initTelegramWebApp();
+    
+    // Store start_param for later use (e.g., referral tracking)
+    const startParam = getStartParam();
+    if (startParam) {
+      writeLocalStorage(LS_START_PARAM_KEY, startParam);
+    }
+  }, []);
 
   React.useEffect(() => {
     const derived = routeToRole(pathname);
@@ -25,10 +38,9 @@ export default function App() {
       return;
     }
 
-    // Redirect root/unknown paths to the last selected role.
-    const last = readLocalStorage<Role>(LS_LAST_ROLE_KEY, "client");
-    navigate(roleToRoute(last), { replace: true });
-  }, [pathname]);
+    // Redirect root/unknown paths to the current role
+    navigate(roleToRoute(role), { replace: true });
+  }, [pathname, role]);
 
   return (
     <ToastProvider>
