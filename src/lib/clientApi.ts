@@ -1,0 +1,171 @@
+/**
+ * Client API - real backend integration
+ */
+
+const API_BASE = import.meta.env.VITE_API_BASE || "";
+
+export type PlanId = "standard" | "pro";
+
+export type Order = {
+  id: string;
+  user_id: string;
+  plan_id: PlanId;
+  amount_rub: number;
+  status: "unpaid" | "paid" | "refunded" | "chargeback";
+  created_at: string;
+  paid_at?: string;
+};
+
+export type PhotoSession = {
+  id: string;
+  user_id: string;
+  order_id?: string;
+  mode: "pack" | "custom";
+  pack_id?: number;
+  title?: string;
+  status: "queued" | "generating" | "done" | "failed" | "canceled";
+  created_at: string;
+  updated_at: string;
+};
+
+export type GeneratedPhoto = {
+  id: string;
+  session_id: string;
+  url: string;
+  label?: string;
+  created_at: string;
+};
+
+export type StylePack = {
+  id: number;
+  slug: string;
+  title: string;
+  description: string;
+  status: "active" | "hidden";
+  preview_urls: string[];
+  estimated_images: number;
+};
+
+// ============ Orders ============
+
+export async function createOrder(planId: PlanId, clientCode?: string): Promise<Order> {
+  const res = await fetch(`${API_BASE}/api/client/order`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ planId, clientCode }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  return data.order;
+}
+
+export async function payOrder(orderId: string): Promise<{ paidAt: string }> {
+  // In production, this would redirect to payment provider
+  // For now, simulate payment
+  const res = await fetch(`${API_BASE}/api/client/order/${orderId}/pay`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  return { paidAt: data.paidAt };
+}
+
+// ============ Avatar / Training ============
+
+export async function startAvatarTraining(photoUrls: string[], clientCode?: string): Promise<{
+  userId: string;
+  jobId: string;
+}> {
+  const res = await fetch(`${API_BASE}/api/client/avatar/start`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ photoUrls, clientCode }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  return data;
+}
+
+export async function getAvatarStatus(): Promise<{
+  status: "none" | "training" | "ready" | "failed";
+  astriaModelId?: string;
+  lastTrainedAt?: string;
+}> {
+  const res = await fetch(`${API_BASE}/api/client/avatar`, {
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  return data.avatar;
+}
+
+// ============ Style Packs ============
+
+export async function listPacks(): Promise<StylePack[]> {
+  const res = await fetch(`${API_BASE}/api/packs`, {
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  return data.packs || [];
+}
+
+// ============ Photosessions ============
+
+export async function createPhotosession(params: {
+  plan: PlanId;
+  styleId: string;
+  prompt?: string;
+  negative?: string;
+  count?: number;
+  aspectRatio?: string;
+  enhance?: boolean;
+}): Promise<PhotoSession> {
+  const res = await fetch(`${API_BASE}/api/client/photosession`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  return data.session;
+}
+
+export async function getPhotosession(sessionId: string): Promise<PhotoSession & { photos: GeneratedPhoto[] }> {
+  const res = await fetch(`${API_BASE}/api/client/photosession/${sessionId}`, {
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  return data.session;
+}
+
+export async function listPhotosessions(): Promise<PhotoSession[]> {
+  const res = await fetch(`${API_BASE}/api/client/photosessions`, {
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  return data.sessions || [];
+}
+
+// ============ Public Config ============
+
+export async function getPublicConfig(): Promise<{
+  planPricesRub: { standard: number; pro: number };
+  planMeta: {
+    standard: { title: string; badge?: string };
+    pro: { title: string; badge?: string };
+  };
+  commissionsPct: { directClient: number; teamL1: number; teamL2: number };
+  payout: { minWithdrawRub: number; slaText: string };
+  packs: StylePack[];
+  promos: any[];
+}> {
+  const res = await fetch(`${API_BASE}/api/config`, {
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  return data.config;
+}

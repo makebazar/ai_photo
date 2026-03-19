@@ -9,21 +9,11 @@ import { useToast } from "../../components/ui/Toast";
 import { cn } from "../../lib/cn";
 import { usePublicConfig } from "../../lib/publicConfig";
 import { ReferralLinksManager } from "../../components/ReferralLinksManager";
-import {
-  partnerClients,
-  partnerDownline,
-  partnerStats,
-  type PartnerClient,
-  type PartnerNode,
-} from "../../mock/partner";
+import { getPartnerStats, getDownline, getClients, type PartnerStats, type DownlinePartner, type ClientItem } from "../../lib/referralApi";
 import { MediaViewer, type MediaItem } from "./MediaViewer";
 
 function rub(n: number) {
   return `${n.toLocaleString("ru-RU")} ₽`;
-}
-
-function formatShortDate(ts: number) {
-  return new Date(ts).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit" });
 }
 
 async function copyToClipboard(text: string) {
@@ -51,6 +41,36 @@ export function PartnerMiniApp() {
   const [viewerIndex, setViewerIndex] = React.useState(0);
   const [viewerItems, setViewerItems] = React.useState<MediaItem[]>([]);
   const [refTab, setRefTab] = React.useState<"clients" | "team">("clients");
+  
+  // Real data state
+  const [stats, setStats] = React.useState<PartnerStats | null>(null);
+  const [statsLoading, setStatsLoading] = React.useState(true);
+  const [clients, setClients] = React.useState<ClientItem[]>([]);
+  const [downline, setDownline] = React.useState<{ level1: DownlinePartner[] } | null>(null);
+
+  // Load stats on mount
+  React.useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        setStatsLoading(true);
+        const [statsData, clientsData, downlineData] = await Promise.all([
+          getPartnerStats().catch(() => null),
+          getClients().catch(() => []),
+          getDownline().catch(() => ({ level1: [] })),
+        ]);
+        if (!alive) return;
+        setStats(statsData);
+        setClients(clientsData);
+        setDownline(downlineData);
+      } catch {
+        // Ignore errors, use empty state
+      } finally {
+        if (alive) setStatsLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
 
   const promoItems = React.useMemo(() => {
     return (cfg.promos ?? [])
@@ -69,16 +89,17 @@ export function PartnerMiniApp() {
   const mediaPromos = React.useMemo(() => promoItems.filter((p) => p.kind !== "text"), [promoItems]);
 
   const teamSummary = React.useMemo(() => {
-    const directClients = partnerClients.filter((c) => c.level === 1);
-    const level2Clients = partnerClients.filter((c) => c.level === 2);
-    const paidClients = partnerClients.filter((c) => c.status === "paid");
+    if (!downline) return { directClients: 0, level2Clients: 0, paidClients: 0, earningsRub: 0 };
+    const l1 = downline.level1 || [];
+    const l2 = l1.flatMap(p => p.children || []);
+    const totalEarnings = l1.reduce((sum, p) => sum + (p.revenue_rub || 0), 0);
     return {
-      directClients: directClients.length,
-      level2Clients: level2Clients.length,
-      paidClients: paidClients.length,
-      earningsRub: partnerClients.reduce((sum, c) => sum + c.yourEarningsRub, 0) + partnerDownline.reduce((s, p) => s + p.yourEarningsRub, 0),
+      directClients: l1.reduce((sum, p) => sum + (p.clients_count || 0), 0),
+      level2Clients: l2.reduce((sum, p) => sum + (p.clients_count || 0), 0),
+      paidClients: clients.filter(c => c.orders_count > 0).length,
+      earningsRub: totalEarnings,
     };
-  }, []);
+  }, [downline, clients]);
 
   return (
     <PhoneShell title="Партнерский кабинет" hideHeader>
@@ -101,7 +122,7 @@ export function PartnerMiniApp() {
             <div className="relative">
               <div className="text-xs text-white/60">Доступно</div>
               <div className="mt-1 text-3xl font-semibold tracking-tight text-white/95">
-                {rub(partnerStats.balanceRub)}
+                {rub(stats?.available_balance_rub || 0)}
               </div>
               <div className="mt-4">
                 <Button className="w-full whitespace-nowrap" onClick={() => setWithdrawOpen(true)}>
@@ -119,19 +140,19 @@ export function PartnerMiniApp() {
             <Card className="p-4">
               <div className="text-xs text-white/60">Переходов</div>
               <div className="mt-1 text-lg font-semibold text-white/95">
-                {partnerStats.clicks}
+                {stats?.direct_clients || 0}
               </div>
             </Card>
             <Card className="p-4">
               <div className="text-xs text-white/60">Регистраций</div>
               <div className="mt-1 text-lg font-semibold text-white/95">
-                {partnerStats.signups}
+                {teamSummary.directClients}
               </div>
             </Card>
             <Card className="p-4">
               <div className="text-xs text-white/60">Оплат</div>
               <div className="mt-1 text-lg font-semibold text-white/95">
-                {partnerStats.paid}
+                {teamSummary.paidClients}
               </div>
             </Card>
           </div>
@@ -292,13 +313,18 @@ export function PartnerMiniApp() {
 
           <div className="mt-2 flex gap-2">
             <div className="flex-1 rounded-xl border border-stroke bg-white/4 px-3 py-2 text-sm text-white/85">
-              {refTab === "clients" ? partnerStats.clientReferralLink : partnerStats.teamReferralLink}
+              {refTab === "clients" 
+                ? `t.me/${import.meta.env.VITE_TELEGRAM_BOT_NAME || 'bot'}?start=client_${stats?.public_id || '...'}`
+                : `t.me/${import.meta.env.VITE_TELEGRAM_PARTNER_BOT_NAME || 'bot'}?start=team_${stats?.public_id || '...'}`
+              }
             </div>
             <Button
               variant="secondary"
               className="whitespace-nowrap"
               onClick={async () => {
-                const link = refTab === "clients" ? partnerStats.clientReferralLink : partnerStats.teamReferralLink;
+                const link = refTab === "clients"
+                  ? `t.me/${import.meta.env.VITE_TELEGRAM_BOT_NAME || 'bot'}?start=client_${stats?.public_id || '...'}`
+                  : `t.me/${import.meta.env.VITE_TELEGRAM_PARTNER_BOT_NAME || 'bot'}?start=team_${stats?.public_id || '...'}`;
                 try {
                   await copyToClipboard(link);
                   toast.push({ title: "Скопировано", description: "Ссылка в буфере обмена.", variant: "success" });
@@ -452,8 +478,8 @@ export function PartnerMiniApp() {
       ) : (
         <PartnerTeamScreen
           onBack={() => setView("dashboard")}
-          clients={partnerClients}
-          partners={partnerDownline}
+          clients={clients}
+          downline={downline}
         />
       )}
 
@@ -464,7 +490,7 @@ export function PartnerMiniApp() {
       >
         <div className="space-y-4">
           <div className="rounded-2xl border border-stroke bg-white/3 p-4 text-sm text-white/75">
-            Вы собираетесь запросить вывод <span className="text-white/95 font-semibold">{rub(partnerStats.balanceRub)}</span>.
+            Вы собираетесь запросить вывод <span className="text-white/95 font-semibold">{rub(stats?.available_balance_rub || 0)}</span>.
             В прототипе это действие отправит заявку в админ‑панель.
           </div>
           <div className="flex gap-2">
@@ -503,11 +529,11 @@ export function PartnerMiniApp() {
 function PartnerTeamScreen({
   onBack,
   clients,
-  partners,
+  downline,
 }: {
   onBack: () => void;
-  clients: PartnerClient[];
-  partners: PartnerNode[];
+  clients: ClientItem[];
+  downline: { level1: DownlinePartner[] } | null;
 }) {
   const [tab, setTab] = React.useState<"clients" | "partners">("clients");
   const [q, setQ] = React.useState("");
@@ -516,17 +542,19 @@ function PartnerTeamScreen({
     const query = q.trim().toLowerCase();
     const list = clients
       .slice()
-      .sort((a, b) => b.lastActivityAt - a.lastActivityAt);
+      .sort((a, b) => new Date(b.referred_at).getTime() - new Date(a.referred_at).getTime());
     if (!query) return list;
-    return list.filter((c) => `${c.telegramUsername} ${c.id}`.toLowerCase().includes(query));
+    return list.filter((c) => `${c.username || ''} ${c.id}`.toLowerCase().includes(query));
   }, [clients, q]);
 
   const filteredPartners = React.useMemo(() => {
     const query = q.trim().toLowerCase();
-    const list = partners.slice().sort((a, b) => b.turnoverRub - a.turnoverRub);
+    const list = (downline?.level1 || [])
+      .slice()
+      .sort((a, b) => (b.revenue_rub || 0) - (a.revenue_rub || 0));
     if (!query) return list;
-    return list.filter((p) => `${p.telegramUsername} ${p.id}`.toLowerCase().includes(query));
-  }, [partners, q]);
+    return list.filter((p) => `${p.username || ''} ${p.id}`.toLowerCase().includes(query));
+  }, [downline, q]);
 
   return (
     <div className="flex h-full flex-col">
@@ -580,34 +608,34 @@ function PartnerTeamScreen({
               <Card key={c.id} className="p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="truncate text-sm font-semibold text-white/95">{c.telegramUsername}</div>
+                    <div className="truncate text-sm font-semibold text-white/95">{c.username || `ID: ${c.id.slice(0, 8)}`}</div>
                     <div className="mt-1 text-xs text-white/60">
-                      L{c.level} • {c.status === "paid" ? "Оплатил" : "Зарегистрировался"} • {formatShortDate(c.joinedAt)}
+                      {c.orders_count > 0 ? "Оплатил" : "Зарегистрировался"} • {formatDate(c.referred_at)}
                     </div>
                   </div>
                   <span
                     className={cn(
                       "shrink-0 rounded-full border px-2.5 py-1 text-[11px]",
-                      c.status === "paid"
+                      c.orders_count > 0
                         ? "border-neonBlue/30 bg-neonBlue/10 text-white/85"
                         : "border-stroke bg-white/4 text-white/70",
                     )}
                   >
-                    {c.status === "paid" ? (c.plan === "pro" ? "PRO" : "STANDARD") : "NEW"}
+                    {c.orders_count > 0 ? "CLIENT" : "NEW"}
                   </span>
                 </div>
                 <div className="mt-3 grid grid-cols-3 gap-2">
                   <div className="rounded-2xl border border-stroke bg-white/3 p-3">
                     <div className="text-[11px] text-white/55">Заказы</div>
-                    <div className="mt-1 text-sm font-semibold text-white/95">{c.ordersCount}</div>
+                    <div className="mt-1 text-sm font-semibold text-white/95">{c.orders_count}</div>
                   </div>
                   <div className="rounded-2xl border border-stroke bg-white/3 p-3">
                     <div className="text-[11px] text-white/55">Оборот</div>
-                    <div className="mt-1 text-sm font-semibold text-white/95">{rub(c.revenueRub)}</div>
+                    <div className="mt-1 text-sm font-semibold text-white/95">{rub(c.total_spent_rub)}</div>
                   </div>
                   <div className="rounded-2xl border border-stroke bg-white/3 p-3">
-                    <div className="text-[11px] text-white/55">Ваш доход</div>
-                    <div className="mt-1 text-sm font-semibold text-white/95">{rub(c.yourEarningsRub)}</div>
+                    <div className="text-[11px] text-white/55">Последний вход</div>
+                    <div className="mt-1 text-xs text-white/70 truncate">{c.last_seen_at ? formatDate(c.last_seen_at) : "—"}</div>
                   </div>
                 </div>
               </Card>
@@ -616,27 +644,27 @@ function PartnerTeamScreen({
               <Card key={p.id} className="p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="truncate text-sm font-semibold text-white/95">{p.telegramUsername}</div>
+                    <div className="truncate text-sm font-semibold text-white/95">{p.username || `ID: ${p.id.slice(0, 8)}`}</div>
                     <div className="mt-1 text-xs text-white/60">
-                      Партнёр L{p.level} • {formatShortDate(p.joinedAt)}
+                      Партнёр • {formatDate(p.created_at)}
                     </div>
                   </div>
                   <span className="shrink-0 rounded-full border border-stroke bg-white/4 px-2.5 py-1 text-[11px] text-white/75">
-                    {rub(p.yourEarningsRub)}
+                    {rub(p.revenue_rub)}
                   </span>
                 </div>
                 <div className="mt-3 grid grid-cols-3 gap-2">
                   <div className="rounded-2xl border border-stroke bg-white/3 p-3">
-                    <div className="text-[11px] text-white/55">Клики</div>
-                    <div className="mt-1 text-sm font-semibold text-white/95">{p.referrals.clicks}</div>
-                  </div>
-                  <div className="rounded-2xl border border-stroke bg-white/3 p-3">
-                    <div className="text-[11px] text-white/55">Оплаты</div>
-                    <div className="mt-1 text-sm font-semibold text-white/95">{p.referrals.paid}</div>
+                    <div className="text-[11px] text-white/55">Клиенты</div>
+                    <div className="mt-1 text-sm font-semibold text-white/95">{p.clients_count}</div>
                   </div>
                   <div className="rounded-2xl border border-stroke bg-white/3 p-3">
                     <div className="text-[11px] text-white/55">Оборот</div>
-                    <div className="mt-1 text-sm font-semibold text-white/95">{rub(p.turnoverRub)}</div>
+                    <div className="mt-1 text-sm font-semibold text-white/95">{rub(p.revenue_rub)}</div>
+                  </div>
+                  <div className="rounded-2xl border border-stroke bg-white/3 p-3">
+                    <div className="text-[11px] text-white/55">Детей</div>
+                    <div className="mt-1 text-sm font-semibold text-white/95">{(p.children || []).length}</div>
                   </div>
                 </div>
               </Card>
@@ -644,4 +672,8 @@ function PartnerTeamScreen({
       </div>
     </div>
   );
+}
+
+function formatDate(ts: string) {
+  return new Date(ts).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "2-digit" });
 }
