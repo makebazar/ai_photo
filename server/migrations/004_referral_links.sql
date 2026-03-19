@@ -103,7 +103,8 @@ CREATE INDEX IF NOT EXISTS referral_clicks_clicked_idx ON referral_clicks (click
 -- ============================================
 
 -- Materialized view for quick partner hierarchy access
-CREATE MATERIALIZED VIEW IF NOT EXISTS partner_hierarchy AS
+DROP MATERIALIZED VIEW IF EXISTS partner_hierarchy CASCADE;
+CREATE MATERIALIZED VIEW partner_hierarchy AS
 WITH RECURSIVE partner_tree AS (
   -- Base case: top-level partners (no parent)
   SELECT
@@ -139,26 +140,13 @@ WITH RECURSIVE partner_tree AS (
 )
 SELECT * FROM partner_tree;
 
--- Create indexes first (required for CONCURRENTLY refresh)
-CREATE UNIQUE INDEX IF NOT EXISTS partner_hierarchy_id_idx ON partner_hierarchy (id);
-CREATE INDEX IF NOT EXISTS partner_hierarchy_parent_idx ON partner_hierarchy (parent_partner_id);
-CREATE INDEX IF NOT EXISTS partner_hierarchy_level_idx ON partner_hierarchy (level);
+-- Create indexes
+CREATE UNIQUE INDEX partner_hierarchy_id_idx ON partner_hierarchy (id);
+CREATE INDEX partner_hierarchy_parent_idx ON partner_hierarchy (parent_partner_id);
+CREATE INDEX partner_hierarchy_level_idx ON partner_hierarchy (level);
 
--- Function to refresh partner hierarchy (simple refresh, not CONCURRENTLY)
-CREATE OR REPLACE FUNCTION refresh_partner_hierarchy()
-RETURNS TRIGGER AS $$
-BEGIN
-  REFRESH MATERIALIZED VIEW partner_hierarchy;
-  RETURN NULL;
-END;
-$$ LANGUAGE plpgsql;
-
--- Trigger to refresh hierarchy on partner changes
-DROP TRIGGER IF EXISTS refresh_hierarchy_on_partner_change ON partners;
-CREATE TRIGGER refresh_hierarchy_on_partner_change
-  AFTER INSERT OR UPDATE OR DELETE ON partners
-  FOR EACH STATEMENT
-  EXECUTE FUNCTION refresh_partner_hierarchy();
+-- Skip auto-refresh trigger for now (manual refresh is fine)
+-- Trigger can be added later if needed
 
 -- ============================================
 -- 5. Partner Statistics View
