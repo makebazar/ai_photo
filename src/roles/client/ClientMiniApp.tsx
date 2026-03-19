@@ -10,6 +10,8 @@ import {
   Sparkles,
   Trash2,
   UploadCloud,
+  UserCheck,
+  UserX,
 } from "lucide-react";
 import * as React from "react";
 import { Badge } from "../../components/ui/Badge";
@@ -23,6 +25,7 @@ import { useToast } from "../../components/ui/Toast";
 import { cn } from "../../lib/cn";
 import { usePublicConfig } from "../../lib/publicConfig";
 import { readLocalStorage, writeLocalStorage } from "../../lib/storage";
+import { useTelegramAuth } from "../../lib/useTelegramAuth";
 import { Lightbox } from "./Lightbox";
 import {
   clientReducer,
@@ -173,6 +176,9 @@ export function ClientMiniApp() {
   const [packs, setPacks] = React.useState<StylePack[]>([]);
   const [packsLoading, setPacksLoading] = React.useState(true);
   const [aspectSheetOpen, setAspectSheetOpen] = React.useState(false);
+
+  // Telegram auth
+  const { isAuthenticated, user, isLoading: authLoading } = useTelegramAuth();
 
   const activeSession = React.useMemo(() => {
     if (!state.activeSessionId) return null;
@@ -499,6 +505,26 @@ export function ClientMiniApp() {
       subtitle="Telegram Mini App"
       hideHeader
     >
+      {/* Auth Indicator */}
+      <div className="fixed right-4 top-4 z-50">
+        {authLoading ? (
+          <Badge className="bg-white/10 text-white/60">
+            <Loader2 size={12} className="mr-1 animate-spin" />
+            Вход...
+          </Badge>
+        ) : isAuthenticated ? (
+          <Badge className="bg-neonBlue/20 text-neonBlue border-neonBlue/30">
+            <UserCheck size={12} className="mr-1" />
+            {user?.username || `ID: ${user?.tgId}`}
+          </Badge>
+        ) : (
+          <Badge className="bg-white/10 text-white/60">
+            <UserX size={12} className="mr-1" />
+            Гость
+          </Badge>
+        )}
+      </div>
+
       <AnimatePresence mode="wait">
         {state.view === "examples" ? (
           <ExamplesScreen onBack={() => go("home")} />
