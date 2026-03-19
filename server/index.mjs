@@ -619,6 +619,7 @@ async function main() {
         limit 300
         `,
       );
+      console.log("[Admin] Partners loaded:", rows.length);
       return rows;
     });
     return { ok: true, partners: rows };
@@ -746,6 +747,27 @@ async function main() {
     });
     
     return { ok: true, message: "All data cleared" };
+  });
+
+  // Debug: создать тестового партнёра (только если нет ADMIN_TOKEN)
+  app.post("/api/debug/create-partner", async (req) => {
+    if (process.env.ADMIN_TOKEN) {
+      throw httpError(403, "Disabled in production");
+    }
+    
+    const body = req.body ?? {};
+    const tgId = Number(body.tgId || Math.floor(Math.random() * 1000000));
+    const username = body.username ? String(body.username) : `partner_${tgId}`;
+    const teamCode = body.teamCode || null;
+    
+    const result = await withTx(pool, async (db) => {
+      const user = await upsertUser(db, { tgId, username });
+      const partner = await ensurePartner(db, { userId: user.id, teamCode });
+      return { user, partner };
+    });
+    
+    console.log("[Debug] Created partner:", result.partner);
+    return { ok: true, ...result };
   });
 
   // Universal auth endpoint: login/register user with role detection from start_param

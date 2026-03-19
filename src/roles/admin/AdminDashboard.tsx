@@ -103,6 +103,8 @@ export function AdminDashboard() {
         promosCount: promos.length,
       });
       
+      console.log("[Admin] Partners data:", partners);
+      
       dispatch({
         type: "load_data",
         data: {
