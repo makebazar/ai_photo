@@ -733,6 +733,21 @@ async function main() {
     return { ok: true, user };
   });
 
+  // Debug: очистить все тестовые данные (только если нет ADMIN_TOKEN)
+  app.post("/api/debug/reset-all", async (req) => {
+    if (process.env.ADMIN_TOKEN) {
+      throw httpError(403, "Disabled in production");
+    }
+    
+    await withTx(pool, async (db) => {
+      // Очищаем в правильном порядке (с учётом foreign keys)
+      await db.query(`truncate payment_events, order_commissions, orders, datasets, dataset_images, avatars, client_attribution, partner_withdrawal_requests, partners, users cascade`);
+      console.log("[Debug] All data cleared");
+    });
+    
+    return { ok: true, message: "All data cleared" };
+  });
+
   // Universal auth endpoint: login/register user with role detection from start_param
   app.post("/api/auth/login", async (req) => {
     const body = req.body ?? {};
