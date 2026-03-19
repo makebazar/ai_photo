@@ -106,7 +106,7 @@ CREATE INDEX IF NOT EXISTS referral_clicks_clicked_idx ON referral_clicks (click
 CREATE MATERIALIZED VIEW IF NOT EXISTS partner_hierarchy AS
 WITH RECURSIVE partner_tree AS (
   -- Base case: top-level partners (no parent)
-  SELECT 
+  SELECT
     p.id,
     p.public_id,
     p.user_id,
@@ -119,11 +119,11 @@ WITH RECURSIVE partner_tree AS (
     ARRAY[p.id] AS path
   FROM partners p
   WHERE p.parent_partner_id IS NULL
-  
+
   UNION ALL
-  
+
   -- Recursive case: partners with parent
-  SELECT 
+  SELECT
     p.id,
     p.public_id,
     p.user_id,
@@ -139,15 +139,16 @@ WITH RECURSIVE partner_tree AS (
 )
 SELECT * FROM partner_tree;
 
+-- Create indexes first (required for CONCURRENTLY refresh)
 CREATE UNIQUE INDEX IF NOT EXISTS partner_hierarchy_id_idx ON partner_hierarchy (id);
 CREATE INDEX IF NOT EXISTS partner_hierarchy_parent_idx ON partner_hierarchy (parent_partner_id);
 CREATE INDEX IF NOT EXISTS partner_hierarchy_level_idx ON partner_hierarchy (level);
 
--- Function to refresh partner hierarchy
+-- Function to refresh partner hierarchy (simple refresh, not CONCURRENTLY)
 CREATE OR REPLACE FUNCTION refresh_partner_hierarchy()
 RETURNS TRIGGER AS $$
 BEGIN
-  REFRESH MATERIALIZED VIEW CONCURRENTLY partner_hierarchy;
+  REFRESH MATERIALIZED VIEW partner_hierarchy;
   RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
