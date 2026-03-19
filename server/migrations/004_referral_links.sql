@@ -102,8 +102,11 @@ CREATE INDEX IF NOT EXISTS referral_clicks_clicked_idx ON referral_clicks (click
 -- 4. Partner Hierarchy Cache (for fast MLM queries)
 -- ============================================
 
--- Materialized view for quick partner hierarchy access
+-- Drop any existing view/table with this name
+DROP VIEW IF EXISTS partner_hierarchy CASCADE;
 DROP MATERIALIZED VIEW IF EXISTS partner_hierarchy CASCADE;
+
+-- Materialized view for quick partner hierarchy access
 CREATE MATERIALIZED VIEW partner_hierarchy AS
 WITH RECURSIVE partner_tree AS (
   -- Base case: top-level partners (no parent)
