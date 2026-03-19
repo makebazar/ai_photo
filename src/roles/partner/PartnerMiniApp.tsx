@@ -340,7 +340,7 @@ export function PartnerMiniApp() {
             <div className="flex-1 rounded-xl border border-stroke bg-white/4 px-3 py-2 text-sm text-white/85">
               {refTab === "clients"
                 ? `https://t.me/ai_photo_testast_bot?start=client_${stats?.public_id || '...'}`
-                : `https://t.me/ai_photo_testast_bot?start=team_${stats?.public_id || '...'}`
+                : `https://t.me/ai_photo_testast_partner_bot?start=team_${stats?.public_id || '...'}`
               }
             </div>
             <Button
@@ -349,7 +349,7 @@ export function PartnerMiniApp() {
               onClick={async () => {
                 const link = refTab === "clients"
                   ? `https://t.me/ai_photo_testast_bot?start=client_${stats?.public_id || '...'}`
-                  : `https://t.me/ai_photo_testast_bot?start=team_${stats?.public_id || '...'}`;
+                  : `https://t.me/ai_photo_testast_partner_bot?start=team_${stats?.public_id || '...'}`;
                 try {
                   await copyToClipboard(link);
                   toast.push({ title: "Скопировано", description: "Ссылка в буфере обмена.", variant: "success" });

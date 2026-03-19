@@ -1308,7 +1308,7 @@ async function main() {
         ...link,
         url: link.kind === 'client'
           ? `https://t.me/ai_photo_testast_bot?start=${link.code}`
-          : `https://t.me/ai_photo_testast_bot?start=${link.code}`,
+          : `https://t.me/ai_photo_testast_partner_bot?start=${link.code}`,
       }
     };
   });
