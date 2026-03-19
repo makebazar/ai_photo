@@ -1,5 +1,6 @@
-import { Banknote, Copy, Link, TrendingUp, Wallet } from "lucide-react";
+import { Banknote, Copy, Link, TrendingUp, Wallet, UserCheck, UserX, Loader2 } from "lucide-react";
 import * as React from "react";
+import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
 import { Modal } from "../../components/ui/Modal";
@@ -11,6 +12,7 @@ import { usePublicConfig } from "../../lib/publicConfig";
 import { ReferralLinksManager } from "../../components/ReferralLinksManager";
 import { getPartnerStats, getDownline, getClients, type PartnerStats, type DownlinePartner, type ClientItem } from "../../lib/referralApi";
 import { MediaViewer, type MediaItem } from "./MediaViewer";
+import { useTelegramAuth } from "../../lib/useTelegramAuth";
 
 function rub(n: number) {
   return `${n.toLocaleString("ru-RU")} ₽`;
@@ -41,7 +43,10 @@ export function PartnerMiniApp() {
   const [viewerIndex, setViewerIndex] = React.useState(0);
   const [viewerItems, setViewerItems] = React.useState<MediaItem[]>([]);
   const [refTab, setRefTab] = React.useState<"clients" | "team">("clients");
-  
+
+  // Telegram auth
+  const { isAuthenticated, user, isLoading: authLoading } = useTelegramAuth();
+
   // Real data state
   const [stats, setStats] = React.useState<PartnerStats | null>(null);
   const [statsLoading, setStatsLoading] = React.useState(true);
@@ -103,6 +108,26 @@ export function PartnerMiniApp() {
 
   return (
     <PhoneShell title="Партнерский кабинет" hideHeader>
+      {/* Auth Indicator */}
+      <div className="fixed right-4 top-4 z-50">
+        {authLoading ? (
+          <Badge className="bg-white/10 text-white/60">
+            <Loader2 size={12} className="mr-1 animate-spin" />
+            Вход...
+          </Badge>
+        ) : isAuthenticated ? (
+          <Badge className="bg-neonBlue/20 text-neonBlue border-neonBlue/30">
+            <UserCheck size={12} className="mr-1" />
+            {user?.username || `ID: ${user?.tgId}`}
+          </Badge>
+        ) : (
+          <Badge className="bg-white/10 text-white/60">
+            <UserX size={12} className="mr-1" />
+            Гость
+          </Badge>
+        )}
+      </div>
+
       {view === "dashboard" ? (
         <div className="space-y-5">
           <div className="flex items-end justify-between gap-3">
@@ -313,9 +338,9 @@ export function PartnerMiniApp() {
 
           <div className="mt-2 flex gap-2">
             <div className="flex-1 rounded-xl border border-stroke bg-white/4 px-3 py-2 text-sm text-white/85">
-              {refTab === "clients" 
-                ? `t.me/${import.meta.env.VITE_TELEGRAM_BOT_NAME || 'bot'}?start=client_${stats?.public_id || '...'}`
-                : `t.me/${import.meta.env.VITE_TELEGRAM_PARTNER_BOT_NAME || 'bot'}?start=team_${stats?.public_id || '...'}`
+              {refTab === "clients"
+                ? `https://t.me/ai_photo_testast_bot?start=client_${stats?.public_id || '...'}`
+                : `https://t.me/ai_photo_testast_bot?start=team_${stats?.public_id || '...'}`
               }
             </div>
             <Button
@@ -323,8 +348,8 @@ export function PartnerMiniApp() {
               className="whitespace-nowrap"
               onClick={async () => {
                 const link = refTab === "clients"
-                  ? `t.me/${import.meta.env.VITE_TELEGRAM_BOT_NAME || 'bot'}?start=client_${stats?.public_id || '...'}`
-                  : `t.me/${import.meta.env.VITE_TELEGRAM_PARTNER_BOT_NAME || 'bot'}?start=team_${stats?.public_id || '...'}`;
+                  ? `https://t.me/ai_photo_testast_bot?start=client_${stats?.public_id || '...'}`
+                  : `https://t.me/ai_photo_testast_bot?start=team_${stats?.public_id || '...'}`;
                 try {
                   await copyToClipboard(link);
                   toast.push({ title: "Скопировано", description: "Ссылка в буфере обмена.", variant: "success" });
