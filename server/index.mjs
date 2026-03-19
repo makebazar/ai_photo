@@ -696,29 +696,6 @@ async function main() {
     return { ok: true, sessions: rows };
   });
 
-  // Track referral clicks (client/team). Keep it simple for now.
-  app.post("/api/ref/click", async (req) => {
-    const body = req.body ?? {};
-    const code = body.code ? String(body.code) : "";
-    const parsed = parseReferralCode(code);
-    if (!parsed) throw httpError(400, "Invalid code");
-    const ref = await withTx(pool, async (db) => {
-      const partner = await resolvePartnerByCode(db, code);
-      await db.query(
-        `insert into referral_clicks (kind, code, partner_id, ip, ua) values ($1, $2, $3, $4, $5)`,
-        [
-          parsed.kind,
-          code,
-          partner?.id ?? null,
-          req.ip ?? null,
-          req.headers["user-agent"] ? String(req.headers["user-agent"]) : null,
-        ],
-      );
-      return partner;
-    });
-    return { ok: true, partnerPublicId: ref?.public_id ?? null };
-  });
-
   // DEBUG auth for now: create/update user by telegram id.
   app.post("/api/debug/auth", async (req) => {
     const body = req.body ?? {};
