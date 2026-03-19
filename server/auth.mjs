@@ -48,31 +48,62 @@ export function requireTelegramAuth(req, opts = {}) {
   const { requireRole } = opts;
   const initData = pickInitData(req);
   const startParam = pickStartParam(req);
-  
+
+  // Логирование для отладки
+  console.log("[Telegram Auth] Request data:", {
+    hasInitData: !!initData,
+    initDataLength: initData?.length,
+    initDataPreview: initData?.slice(0, 100) + "...",
+    startParam,
+    headers: {
+      "x-telegram-init-data": req.headers["x-telegram-init-data"] ? "present" : "missing",
+      "x-telegram-start-param": req.headers["x-telegram-start-param"] ? "present" : "missing",
+    },
+    query: {
+      initData: req.query?.initData ? "present" : "missing",
+      startParam: req.query?.startParam,
+    },
+    body: {
+      initData: req.body?.initData ? "present" : "missing",
+      startParam: req.body?.startParam,
+      tgId: req.body?.tgId,
+      username: req.body?.username,
+    },
+  });
+
   if (initData) {
     // Determine which bot token to use
     const botToken = getBotTokenForRole(startParam);
     if (!botToken) {
+      console.error("[Telegram Auth] Bot token is not configured");
       throw httpError(500, "Telegram bot token is not configured");
     }
-    
+
     const result = validateInitData(initData, botToken, { maxAgeSeconds: 24 * 60 * 60 });
     if (!result || !result.user || !result.user.id) {
+      console.error("[Telegram Auth] Invalid initData validation result");
       throw httpError(401, "Invalid Telegram initData");
     }
-    
+
     const role = getRoleFromStartParam(startParam);
-    
+
     // If specific role is required, validate it
     if (requireRole && role !== requireRole) {
       throw httpError(403, `Access denied: ${role} cannot access ${requireRole} resources`);
     }
-    
-    return { 
-      kind: "telegram", 
+
+    console.log("[Telegram Auth] Success:", {
+      userId: result.user.id,
+      username: result.user.username,
+      role,
+      startParam,
+    });
+
+    return {
+      kind: "telegram",
       user: result.user,
       role,
-      startParam 
+      startParam
     };
   }
 
@@ -82,10 +113,12 @@ export function requireTelegramAuth(req, opts = {}) {
     if (Number.isFinite(tgId)) {
       const username = req.body?.username ? String(req.body.username) : null;
       const role = requireRole || getRoleFromStartParam(startParam) || "client";
+      console.log("[Telegram Auth] Debug auth:", { tgId, username, role });
       return { kind: "debug", user: { id: tgId, username }, role, startParam };
     }
   }
 
+  console.error("[Telegram Auth] No auth data provided");
   throw httpError(401, "Auth required (Telegram initData)");
 }
 

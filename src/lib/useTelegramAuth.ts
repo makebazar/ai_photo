@@ -85,7 +85,16 @@ async function loginViaTelegram(): Promise<AuthResult> {
   const initData = getInitData();
   const startParam = getStartParam();
 
+  console.log("[Telegram Auth] Client login attempt:", {
+    hasInitData: !!initData,
+    initDataLength: initData?.length,
+    initDataPreview: initData?.slice(0, 50) + "...",
+    startParam,
+    apiBase: API_BASE,
+  });
+
   if (!initData) {
+    console.error("[Telegram Auth] No initData available");
     throw new Error("Telegram initData not available. Are you running inside Telegram?");
   }
 
@@ -99,12 +108,26 @@ async function loginViaTelegram(): Promise<AuthResult> {
     body: JSON.stringify({}),
   });
 
+  console.log("[Telegram Auth] Server response:", {
+    status: response.status,
+    statusText: response.statusText,
+    ok: response.ok,
+  });
+
   if (!response.ok) {
     const error = await response.text();
+    console.error("[Telegram Auth] Server error:", error);
     throw new Error(error || `Auth failed: ${response.status}`);
   }
 
   const data = await response.json();
+  console.log("[Telegram Auth] Success:", {
+    userId: data.user?.id,
+    username: data.user?.username,
+    role: data.role,
+    hasPartner: !!data.partner,
+  });
+
   return {
     user: data.user,
     partner: data.partner,
