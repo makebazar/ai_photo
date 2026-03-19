@@ -99,57 +99,9 @@ CREATE INDEX IF NOT EXISTS referral_clicks_link_idx ON referral_clicks (link_id)
 CREATE INDEX IF NOT EXISTS referral_clicks_clicked_idx ON referral_clicks (clicked_at DESC);
 
 -- ============================================
--- 4. Partner Hierarchy Cache (for fast MLM queries)
+-- 4. Partner Hierarchy - Skip materialized view for simplicity
+-- Using regular queries instead
 -- ============================================
-
--- Drop any existing view/table with this name
-DROP VIEW IF EXISTS partner_hierarchy CASCADE;
-DROP MATERIALIZED VIEW IF EXISTS partner_hierarchy CASCADE;
-
--- Materialized view for quick partner hierarchy access
-CREATE MATERIALIZED VIEW partner_hierarchy AS
-WITH RECURSIVE partner_tree AS (
-  -- Base case: top-level partners (no parent)
-  SELECT
-    p.id,
-    p.public_id,
-    p.user_id,
-    p.parent_partner_id,
-    p.client_code,
-    p.team_code,
-    p.status,
-    p.created_at,
-    0 AS level,
-    ARRAY[p.id] AS path
-  FROM partners p
-  WHERE p.parent_partner_id IS NULL
-
-  UNION ALL
-
-  -- Recursive case: partners with parent
-  SELECT
-    p.id,
-    p.public_id,
-    p.user_id,
-    p.parent_partner_id,
-    p.client_code,
-    p.team_code,
-    p.status,
-    p.created_at,
-    pt.level + 1,
-    pt.path || p.id
-  FROM partners p
-  INNER JOIN partner_tree pt ON p.parent_partner_id = pt.id
-)
-SELECT * FROM partner_tree;
-
--- Create indexes
-CREATE UNIQUE INDEX partner_hierarchy_id_idx ON partner_hierarchy (id);
-CREATE INDEX partner_hierarchy_parent_idx ON partner_hierarchy (parent_partner_id);
-CREATE INDEX partner_hierarchy_level_idx ON partner_hierarchy (level);
-
--- Skip auto-refresh trigger for now (manual refresh is fine)
--- Trigger can be added later if needed
 
 -- ============================================
 -- 5. Partner Statistics View
