@@ -1280,13 +1280,13 @@ async function main() {
       return rows[0];
     });
 
-    return { 
-      ok: true, 
+    return {
+      ok: true,
       link: {
         ...link,
-        url: link.kind === 'client' 
-          ? `t.me/${process.env.TELEGRAM_BOT_NAME || 'bot'}?start=${link.code}`
-          : `t.me/${process.env.TELEGRAM_PARTNER_BOT_NAME || 'bot'}?start=${link.code}`,
+        url: link.kind === 'client'
+          ? `https://t.me/ai_photo_testast_bot?start=${link.code}`
+          : `https://t.me/ai_photo_testast_bot?start=${link.code}`,
       }
     };
   });
