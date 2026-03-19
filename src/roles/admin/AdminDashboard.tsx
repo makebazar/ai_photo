@@ -15,6 +15,7 @@ import {
   Trash2,
   Users,
   X,
+  RefreshCw,
 } from "lucide-react";
 import * as React from "react";
 import { Badge } from "../../components/ui/Badge";
@@ -29,12 +30,18 @@ import { useAdminStore, type AdminAction } from "./adminStore";
 export function AdminDashboard() {
   const toast = useToast();
   const { state, dispatch } = useAdminStore();
+  const [loading, setLoading] = React.useState(false);
 
   const [withdrawalOpenId, setWithdrawalOpenId] = React.useState<string | null>(null);
   const [orderOpenId, setOrderOpenId] = React.useState<string | null>(null);
   const [deleteUserId, setDeleteUserId] = React.useState<string | null>(null);
   const [adjustPartnerId, setAdjustPartnerId] = React.useState<string | null>(null);
   const [resetOpen, setResetOpen] = React.useState(false);
+
+  const refreshData = () => {
+    // Hard reload from server data
+    window.location.reload();
+  };
 
   const openedWithdrawal = React.useMemo(
     () => state.withdrawals.find((w) => w.requestId === withdrawalOpenId) ?? null,
@@ -78,7 +85,12 @@ export function AdminDashboard() {
                       Финансы • Анти‑фрод • Пользователи • Партнёры
                     </div>
                   </div>
-                  <Badge className="bg-white/5 text-white/80">/admin</Badge>
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="secondary" onClick={refreshData} disabled={loading}>
+                      <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+                    </Button>
+                    <Badge className="bg-white/5 text-white/80">/admin</Badge>
+                  </div>
                 </div>
               </Card>
 

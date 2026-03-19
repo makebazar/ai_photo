@@ -5,9 +5,11 @@ import { adminSeed } from "../../mock/admin";
 import { makeAudit, seedToState, type AdminState } from "./adminModel";
 
 const LS_KEY = "ai_photo_admin_state_v2";
+const LS_LAST_FETCH_KEY = "ai_photo_admin_last_fetch_v1";
 
 export type AdminAction =
   | { type: "nav"; nav: AdminState["nav"] }
+  | { type: "load_data"; data: Partial<AdminState> }
   | { type: "withdrawal_status"; requestId: string; status: "Одобрено" | "Отклонено"; note?: string }
   | { type: "partner_block"; partnerId: string; blocked: boolean }
   | { type: "partner_adjust_balance"; partnerId: string; deltaRub: number; reason: string }
@@ -66,6 +68,9 @@ export function adminReducer(state: AdminState, action: AdminAction): AdminState
   switch (action.type) {
     case "nav":
       return { ...state, nav: action.nav };
+
+    case "load_data":
+      return { ...state, ...action.data };
 
     case "withdrawal_status": {
       const w = state.withdrawals.find((x) => x.requestId === action.requestId);
