@@ -3,7 +3,7 @@ import { Download, X } from "lucide-react";
 import * as React from "react";
 import { SmartImage } from "../../components/ui/SmartImage";
 import { cn } from "../../lib/cn";
-import type { MockPhoto } from "../../mock/photos";
+import type { MockPhoto } from "./clientFlow";
 
 export function Lightbox({
   open,

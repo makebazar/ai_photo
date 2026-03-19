@@ -1,12 +1,15 @@
-import type { MockPhoto } from "../../mock/photos";
 import { loadPublicConfig } from "../../lib/publicConfig";
 
 export type PlanId = "standard" | "pro";
 
+export type MockPhoto = {
+  id: string;
+  url: string;
+  label: string;
+};
+
 export function photosPerPlan(plan: PlanId) {
   const cfg = loadPublicConfig();
-  const count = cfg.planMeta?.[plan]?.photosCount;
-  if (typeof count === "number" && Number.isFinite(count) && count > 0) return Math.round(count);
   return plan === "pro" ? 30 : 20;
 }
 

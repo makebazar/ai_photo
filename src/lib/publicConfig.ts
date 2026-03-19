@@ -1,5 +1,4 @@
 import * as React from "react";
-import { adminSeed } from "../mock/admin";
 import { readLocalStorage, writeLocalStorage } from "./storage";
 
 const LS_KEY = "ai_photo_public_config_v1";
@@ -11,7 +10,10 @@ export type PublicConfig = {
     standard: number;
     pro: number;
   };
-  planMeta: typeof adminSeed.config.planMeta;
+  planMeta: {
+    standard: { title: string; badge?: string };
+    pro: { title: string; badge?: string };
+  };
   commissionsPct: {
     directClient: number;
     teamL1: number;
@@ -21,18 +23,31 @@ export type PublicConfig = {
     minWithdrawRub: number;
     slaText: string;
   };
-  packs: typeof adminSeed.packs;
-  promos: typeof adminSeed.promos;
+  packs: any[];
+  promos: any[];
 };
 
 const DEFAULT_PUBLIC_CONFIG: PublicConfig = {
   updatedAt: 0,
-  planPricesRub: adminSeed.config.planPricesRub,
-  planMeta: adminSeed.config.planMeta,
-  commissionsPct: adminSeed.config.commissionsPct,
-  payout: adminSeed.config.payout,
-  packs: adminSeed.packs,
-  promos: adminSeed.promos,
+  planPricesRub: {
+    standard: 2990,
+    pro: 4990,
+  },
+  planMeta: {
+    standard: { title: "Standard" },
+    pro: { title: "PRO", badge: "Выбор профи" },
+  },
+  commissionsPct: {
+    directClient: 40,
+    teamL1: 10,
+    teamL2: 5,
+  },
+  payout: {
+    minWithdrawRub: 5000,
+    slaText: "1-3 рабочих дня",
+  },
+  packs: [],
+  promos: [],
 };
 
 let cached: { updatedAt: number; cfg: PublicConfig } | null = null;
@@ -72,6 +87,30 @@ export function savePublicConfig(cfg: PublicConfig) {
   writeLocalStorage(LS_KEY, { ...cfg, updatedAt: Date.now() });
   cached = null;
   if (typeof window !== "undefined") window.dispatchEvent(new Event(EVENT_NAME));
+}
+
+/**
+ * Load config from server API
+ */
+export async function fetchPublicConfig(): Promise<PublicConfig> {
+  const API_BASE = import.meta.env.VITE_API_BASE || "";
+  const res = await fetch(`${API_BASE}/api/config`);
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  const cfg = data.config;
+  
+  const result: PublicConfig = {
+    updatedAt: Date.now(),
+    planPricesRub: cfg.planPricesRub || DEFAULT_PUBLIC_CONFIG.planPricesRub,
+    planMeta: cfg.planMeta || DEFAULT_PUBLIC_CONFIG.planMeta,
+    commissionsPct: cfg.commissionsPct || DEFAULT_PUBLIC_CONFIG.commissionsPct,
+    payout: cfg.payout || DEFAULT_PUBLIC_CONFIG.payout,
+    packs: cfg.packs || [],
+    promos: cfg.promos || [],
+  };
+  
+  savePublicConfig(result);
+  return result;
 }
 
 export function usePublicConfig() {

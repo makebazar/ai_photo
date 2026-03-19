@@ -23,8 +23,6 @@ import { useToast } from "../../components/ui/Toast";
 import { cn } from "../../lib/cn";
 import { usePublicConfig } from "../../lib/publicConfig";
 import { readLocalStorage, writeLocalStorage } from "../../lib/storage";
-import { showcasePhotos, type MockPhoto } from "../../mock/photos";
-import type { StylePack } from "../../mock/packs";
 import { Lightbox } from "./Lightbox";
 import {
   clientReducer,
@@ -33,15 +31,13 @@ import {
   type ClientView,
   type PhotoSession,
   type PromptAspectRatio,
+  type MockPhoto,
 } from "./clientFlow";
 import {
-  apiCreateOrder,
-  apiGeneratePhotosCustom,
-  apiGeneratePhotosFromPack,
-  apiListPacks,
-  apiPayOrder,
-  apiStartAstriaTraining,
-} from "./mockClientApi";
+  createOrder,
+  listPacks,
+  type StylePack,
+} from "../../lib/clientApi";
 
 function rub(n: number) {
   return `${n.toLocaleString("ru-RU")} ₽`;
@@ -54,6 +50,9 @@ function formatDate(ts: number) {
     year: "2-digit",
   });
 }
+
+// Placeholder for showcase photos (will be loaded from API)
+const SHOWCASE_PHOTOS: Array<{ id: string; url: string; label: string }> = [];
 
 const LS_KEY = "ai_photo_client_state_v3";
 
@@ -187,7 +186,7 @@ export function ClientMiniApp() {
     (async () => {
       try {
         setPacksLoading(true);
-        const list = await apiListPacks();
+        const list = await listPacks();
         if (!alive) return;
         setPacks(list);
       } finally {
@@ -324,22 +323,12 @@ export function ClientMiniApp() {
       if (busy) return;
 
       setBusy("gen");
-      const photos =
-        state.pendingStyleId === "custom"
-          ? await apiGeneratePhotosCustom({
-              plan: state.plan,
-              prompt: state.pendingCustomPrompt,
-              negative: state.pendingCustomNegative,
-              count: state.pendingCustomCount,
-              aspectRatio: state.pendingCustomAspect,
-              enhance: state.pendingEnhance,
-              cfgScale: state.pendingCustomCfgScale,
-              steps: state.pendingCustomSteps,
-              faceFix: state.pendingCustomFaceFix,
-            })
-          : await apiGeneratePhotosFromPack(state.plan, state.pendingStyleId ?? "pack", {
-              enhance: state.pendingEnhance,
-            });
+      // Mock photo generation - in production use real API
+      const photos: MockPhoto[] = Array.from({ length: state.plan === "pro" ? 30 : 20 }).map((_, i) => ({
+        id: `photo_${Date.now()}_${i}`,
+        url: `https://via.placeholder.com/512x512?text=Photo+${i + 1}`,
+        label: `Photo ${i + 1}`,
+      }));
       const session: PhotoSession = {
         id: `sess_${Date.now()}_${Math.random().toString(16).slice(2)}`,
         plan: state.plan,
@@ -395,10 +384,17 @@ export function ClientMiniApp() {
   async function payFlow() {
     try {
       setBusy("pay");
-      const order = await apiCreateOrder(state.plan);
-      dispatch({ type: "order_created", order });
-      const pay = await apiPayOrder(order.id);
-      dispatch({ type: "order_paid", paidAt: pay.paidAt });
+      const order = await createOrder(state.plan);
+      const orderForDispatch = { 
+        ...order, 
+        plan: order.plan_id, 
+        amountRub: order.amount_rub, 
+        createdAt: Date.parse(order.created_at), 
+        paidAt: order.paid_at ? Date.parse(order.paid_at) : undefined 
+      };
+      dispatch({ type: "order_created", order: orderForDispatch });
+      // In production, redirect to payment provider
+      dispatch({ type: "order_paid", paidAt: Date.now() });
       setBusy(null);
       toast.push({
         title: "Оплата прошла",
@@ -426,7 +422,9 @@ export function ClientMiniApp() {
     }
     if (busy) return;
     setBusy("train");
-    const { astriaModelId, jobId } = await apiStartAstriaTraining();
+    // Mock training start - in production use real API
+    const astriaModelId = `model_${Date.now()}`;
+    const jobId = `job_${Date.now()}`;
     dispatch({ type: "training_queued", astriaModelId, jobId });
     setBusy(null);
     go("training");
@@ -493,7 +491,7 @@ export function ClientMiniApp() {
     go("generating");
   }
 
-  const galleryPhotos: MockPhoto[] = activeSession?.photos ?? [];
+  const galleryPhotos: any[] = activeSession?.photos ?? [];
 
   return (
     <PhoneShell
@@ -647,7 +645,7 @@ export function ClientMiniApp() {
             <Card className="p-4">
               <SectionHeader title="Примеры" />
               <div className="mt-3 grid grid-cols-3 gap-2">
-                {showcasePhotos.slice(0, 3).map((p, idx) => (
+                {SHOWCASE_PHOTOS.slice(0, 3).map((p, idx) => (
                   <SmartImage
                     key={p.id}
                     src={p.url}
@@ -1491,7 +1489,7 @@ export function ClientMiniApp() {
                       className="col-span-3 h-40 w-full rounded-2xl"
                     />
                     {(state.pendingStyleId === "custom"
-                      ? showcasePhotos.slice(0, 3).map((p) => p.url)
+                      ? SHOWCASE_PHOTOS.slice(0, 3).map((p) => p.url)
                       : pendingPack?.previewUrls?.slice(0, 3) ?? [])
                       .slice(0, 3)
                       .map((src, idx) => (
@@ -1677,7 +1675,7 @@ export function ClientMiniApp() {
 }
 
 function ExamplesScreen({ onBack }: { onBack: () => void }) {
-  const photos = showcasePhotos;
+  const photos = SHOWCASE_PHOTOS;
   const [index, setIndex] = React.useState(0);
   const safeIndex = clampIndex(index, photos.length);
   const active = photos[safeIndex];

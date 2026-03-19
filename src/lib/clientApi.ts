@@ -10,10 +10,14 @@ export type Order = {
   id: string;
   user_id: string;
   plan_id: PlanId;
+  plan: PlanId;
   amount_rub: number;
-  status: "unpaid" | "paid" | "refunded" | "chargeback";
+  amountRub: number;
+  status: "unpaid" | "paid";
   created_at: string;
+  createdAt: string;
   paid_at?: string;
+  paidAt?: string;
 };
 
 export type PhotoSession = {
@@ -43,7 +47,13 @@ export type StylePack = {
   description: string;
   status: "active" | "hidden";
   preview_urls: string[];
+  previewUrls?: string[];
+  coverUrl?: string;
   estimated_images: number;
+  estimatedImages?: number;
+  vibe?: string;
+  promptTemplates?: any[];
+  costsPerClass?: Record<string, number>;
 };
 
 // ============ Orders ============

@@ -1,11 +1,36 @@
 import * as React from "react";
 import { savePublicConfig } from "../../lib/publicConfig";
 import { readLocalStorage, writeLocalStorage } from "../../lib/storage";
-import { adminSeed } from "../../mock/admin";
-import { makeAudit, seedToState, type AdminState } from "./adminModel";
+import { makeAudit, type AdminState } from "./adminModel";
 
 const LS_KEY = "ai_photo_admin_state_v2";
 const LS_LAST_FETCH_KEY = "ai_photo_admin_last_fetch_v1";
+
+// Default empty state (no mock data)
+function createEmptyState(): AdminState {
+  return {
+    nav: "overview",
+    users: [],
+    orders: [],
+    partners: [],
+    withdrawals: [],
+    packs: [],
+    promos: [],
+    sessions: [],
+    config: {
+      planPricesRub: { standard: 2990, pro: 4990 },
+      planMeta: {
+        standard: { title: "Standard" },
+        pro: { title: "PRO", badge: "Выбор профи" },
+      },
+      commissionsPct: { directClient: 40, teamL1: 10, teamL2: 5 },
+      payout: { minWithdrawRub: 5000, slaText: "1-3 рабочих дня" },
+      astriaCostsRub: { standard: 100, pro: 200, monthlyApi: 5000 },
+    },
+    turnoverRub: 0,
+    audit: [],
+  };
+}
 
 export type AdminAction =
   | { type: "nav"; nav: AdminState["nav"] }
@@ -30,12 +55,11 @@ export type AdminAction =
 
 export function loadAdminState(): AdminState {
   const persisted = readLocalStorage<Partial<AdminState> | null>(LS_KEY, null);
-  const base = seedToState(adminSeed);
+  const base = createEmptyState();
   if (!persisted) return base;
   return {
     ...base,
     ...persisted,
-    // arrays: prefer persisted if present and valid
     partners: Array.isArray((persisted as any).partners) ? (persisted as any).partners : base.partners,
     withdrawals: Array.isArray((persisted as any).withdrawals) ? (persisted as any).withdrawals : base.withdrawals,
     users: Array.isArray((persisted as any).users) ? (persisted as any).users : base.users,
@@ -332,7 +356,7 @@ export function adminReducer(state: AdminState, action: AdminAction): AdminState
     }
 
     case "reset_seed":
-      return seedToState(adminSeed);
+      return createEmptyState();
 
     default:
       return state;

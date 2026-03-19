@@ -390,7 +390,7 @@ export function PartnerMiniApp() {
                   className="flex w-full items-start gap-3 p-4 text-left"
                   onClick={() => {
                     const urls = p.mediaUrls ?? (p.coverUrl ? [p.coverUrl] : []);
-                    setViewerItems(urls.map((u, i) => ({ id: `${p.id}_${i}`, url: u, label: p.title })));
+                    setViewerItems(urls.map((u: string, i: number) => ({ id: `${p.id}_${i}`, url: u, label: p.title })));
                     setViewerIndex(0);
                     setViewerOpen(true);
                   }}
