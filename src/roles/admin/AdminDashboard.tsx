@@ -64,14 +64,44 @@ export function AdminDashboard() {
     try {
       setLoading(true);
       const [users, orders, partners, withdrawals, packs, promos, config] = await Promise.all([
-        getUsers().catch(() => []),
-        getOrders().catch(() => []),
-        getPartners().catch(() => []),
-        getWithdrawals().catch(() => []),
-        getPacks().catch(() => []),
-        getPromos().catch(() => []),
-        getAdminConfig().catch(() => null),
+        getUsers().catch((err) => {
+          console.error("[Admin] Error loading users:", err);
+          return [];
+        }),
+        getOrders().catch((err) => {
+          console.error("[Admin] Error loading orders:", err);
+          return [];
+        }),
+        getPartners().catch((err) => {
+          console.error("[Admin] Error loading partners:", err);
+          return [];
+        }),
+        getWithdrawals().catch((err) => {
+          console.error("[Admin] Error loading withdrawals:", err);
+          return [];
+        }),
+        getPacks().catch((err) => {
+          console.error("[Admin] Error loading packs:", err);
+          return [];
+        }),
+        getPromos().catch((err) => {
+          console.error("[Admin] Error loading promos:", err);
+          return [];
+        }),
+        getAdminConfig().catch((err) => {
+          console.error("[Admin] Error loading config:", err);
+          return null;
+        }),
       ]);
+
+      console.log("[Admin] Loaded data:", {
+        usersCount: users.length,
+        ordersCount: orders.length,
+        partnersCount: partners.length,
+        withdrawalsCount: withdrawals.length,
+        packsCount: packs.length,
+        promosCount: promos.length,
+      });
       
       dispatch({
         type: "load_data",

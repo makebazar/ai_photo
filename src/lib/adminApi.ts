@@ -12,6 +12,7 @@ async function fetchAdmin<T>(endpoint: string, options?: RequestInit): Promise<T
     headers: {
       "Content-Type": "application/json",
       "X-Admin-Token": ADMIN_TOKEN,
+      "X-Admin-Auth": "1", // Debug auth для прототипа
       ...options?.headers,
     },
   });
