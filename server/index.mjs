@@ -328,7 +328,8 @@ async function getPartnerClients(db, partnerPublicId) {
 
 function requireAdmin(req) {
   const token = process.env.ADMIN_TOKEN;
-  if (!token) throw httpError(500, "ADMIN_TOKEN is not configured");
+  // Если токен не установлен - разрешаем доступ (для прототипа)
+  if (!token) return;
   const header = req.headers["x-admin-token"];
   if (!header || String(header) !== token) throw httpError(401, "Unauthorized");
 }

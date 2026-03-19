@@ -8,6 +8,8 @@ import {
   ShoppingBag,
   Users,
   RefreshCw,
+  LogOut,
+  Lock,
 } from "lucide-react";
 import * as React from "react";
 import { Badge } from "../../components/ui/Badge";
@@ -16,18 +18,47 @@ import { Card } from "../../components/ui/Card";
 import { useToast } from "../../components/ui/Toast";
 import { cn } from "../../lib/cn";
 import { useAdminStore, type AdminAction } from "./adminStore";
-import { 
-  getUsers, getOrders, getPartners, getWithdrawals, 
+import {
+  getUsers, getOrders, getPartners, getWithdrawals,
   getAdminConfig, getPacks, getPromos, getSessions,
   type AdminPack as ApiAdminPack,
   type AdminPromo as ApiAdminPromo,
 } from "../../lib/adminApi";
+
+const ADMIN_PASSWORD = "admin123"; // Простой пароль для прототипа
+const LS_AUTH_KEY = "ai_photo_admin_auth_v1";
 
 export function AdminDashboard() {
   const toast = useToast();
   const { state, dispatch } = useAdminStore();
   const [loading, setLoading] = React.useState(false);
   const [nav, setNav] = React.useState<"overview" | "users" | "orders" | "partners" | "withdrawals" | "packs" | "promos">("overview");
+  const [isAuthenticated, setIsAuthenticated] = React.useState(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem(LS_AUTH_KEY) === "1";
+  });
+  const [password, setPassword] = React.useState("");
+  const [authError, setAuthError] = React.useState("");
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (password === ADMIN_PASSWORD) {
+      localStorage.setItem(LS_AUTH_KEY, "1");
+      setIsAuthenticated(true);
+      setAuthError("");
+      toast.push({ title: "Вход выполнен", variant: "success" });
+    } else {
+      setAuthError("Неверный пароль");
+      toast.push({ title: "Ошибка входа", description: "Неверный пароль", variant: "danger" });
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem(LS_AUTH_KEY);
+    setIsAuthenticated(false);
+    setPassword("");
+    toast.push({ title: "Выход из системы", variant: "success" });
+  };
 
   const refreshData = async () => {
     try {
@@ -148,8 +179,47 @@ export function AdminDashboard() {
   };
 
   React.useEffect(() => {
-    refreshData();
-  }, []);
+    if (isAuthenticated) {
+      refreshData();
+    }
+  }, [isAuthenticated]);
+
+  if (!isAuthenticated) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-white/5 to-transparent px-4">
+        <Card className="w-full max-w-md p-8">
+          <div className="mb-6 text-center">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-neonViolet/20">
+              <Lock className="text-neonViolet" size={32} />
+            </div>
+            <h1 className="text-2xl font-bold text-white">Admin Dashboard</h1>
+            <p className="mt-2 text-sm text-white/60">Введите пароль для доступа к панели управления</p>
+          </div>
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <label className="text-xs text-white/60">Пароль</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setAuthError("");
+                }}
+                className="mt-2 w-full rounded-2xl border border-stroke bg-white/4 px-4 py-3 text-sm text-white/90 outline-none focus:ring-2 focus:ring-neonBlue/30"
+                placeholder="••••••••"
+                autoFocus
+              />
+              {authError && <p className="mt-2 text-sm text-red-400">{authError}</p>}
+            </div>
+            <Button type="submit" className="w-full">
+              <Lock size={16} className="mr-2" />
+              Войти
+            </Button>
+          </form>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-full bg-gradient-to-b from-white/5 to-transparent">
@@ -162,10 +232,16 @@ export function AdminDashboard() {
               <p className="text-sm text-white/60">Управление пользователями, заказами и контентом</p>
             </div>
           </div>
-          <Button variant="secondary" onClick={refreshData} disabled={loading}>
-            <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
-            <span className="ml-2">{loading ? "Загрузка..." : "Обновить"}</span>
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={refreshData} disabled={loading}>
+              <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+              <span className="ml-2">{loading ? "Загрузка..." : "Обновить"}</span>
+            </Button>
+            <Button variant="secondary" onClick={handleLogout}>
+              <LogOut size={16} className="mr-2" />
+              Выйти
+            </Button>
+          </div>
         </div>
 
         {/* Navigation */}
