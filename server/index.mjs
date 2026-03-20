@@ -582,7 +582,8 @@ async function main() {
       const { rows } = await db.query(
         `
         select u.id, u.tg_id, u.username, u.created_at, u.last_seen_at,
-               a.status as avatar_status, a.astria_model_id, a.last_trained_at
+               a.status as avatar_status, a.astria_model_id, a.last_trained_at,
+               (select count(*) from partners p where p.user_id = u.id) > 0 as is_partner
         from users u
         left join avatars a on a.user_id = u.id
         order by u.created_at desc
@@ -609,9 +610,23 @@ async function main() {
     const rows = await withTx(pool, async (db) => {
       const { rows } = await db.query(
         `
-        select p.id, p.public_id, p.status, p.client_code, p.team_code, p.parent_partner_id,
-               u.username, u.tg_id, p.created_at,
-               b.available_rub, b.locked_rub, b.paid_out_rub
+        select
+          p.id,
+          p.public_id,
+          p.status,
+          p.client_code,
+          p.team_code,
+          p.parent_partner_id,
+          u.username,
+          u.tg_id,
+          p.created_at,
+          b.available_rub,
+          b.locked_rub,
+          b.paid_out_rub,
+          (select count(*)::int from referral_clicks where partner_id = p.id and kind = 'client') as clicks_count,
+          (select count(*)::int from client_attribution where partner_id = p.id) as signups_count,
+          (select count(*)::int from orders where attribution_partner_id = p.id and status = 'paid') as paid_orders_count,
+          (select coalesce(sum(amount_rub), 0)::int from orders where attribution_partner_id = p.id and status = 'paid') as turnover_rub
         from partners p
         join users u on u.id = p.user_id
         left join partner_balances b on b.partner_id = p.id

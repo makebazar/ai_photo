@@ -35,6 +35,7 @@ export type AdminUser = {
   avatar_status?: string;
   astria_model_id?: string;
   last_trained_at?: string | null;
+  is_partner?: boolean;
 };
 
 export async function getUsers(): Promise<AdminUser[]> {
@@ -88,6 +89,10 @@ export type AdminPartner = {
   available_rub: number;
   locked_rub: number;
   paid_out_rub: number;
+  clicks_count?: number;
+  signups_count?: number;
+  paid_orders_count?: number;
+  turnover_rub?: number;
 };
 
 export async function getPartners(): Promise<AdminPartner[]> {

@@ -45,16 +45,33 @@ export function PartnerMiniApp() {
   const [refTab, setRefTab] = React.useState<"clients" | "team">("clients");
 
   // Telegram auth
-  const { isAuthenticated, user, isLoading: authLoading } = useTelegramAuth();
+  const { isAuthenticated, user, partner, isLoading: authLoading, login } = useTelegramAuth();
 
   // Real data state
   const [stats, setStats] = React.useState<PartnerStats | null>(null);
   const [statsLoading, setStatsLoading] = React.useState(true);
   const [clients, setClients] = React.useState<ClientItem[]>([]);
   const [downline, setDownline] = React.useState<{ level1: DownlinePartner[] } | null>(null);
+  const [isRegistering, setIsRegistering] = React.useState(false);
+
+  const handleRegister = async () => {
+    try {
+      setIsRegistering(true);
+      await login(true, "partner");
+      toast.push({ title: "Вы успешно зарегистрированы!", variant: "success" });
+    } catch (err) {
+      toast.push({ title: "Ошибка регистрации", description: String(err), variant: "danger" });
+    } finally {
+      setIsRegistering(false);
+    }
+  };
 
   // Load stats on mount
   React.useEffect(() => {
+    if (!partner) {
+      setStatsLoading(false);
+      return;
+    }
     let alive = true;
     (async () => {
       try {
@@ -75,7 +92,7 @@ export function PartnerMiniApp() {
       }
     })();
     return () => { alive = false; };
-  }, []);
+  }, [partner]);
 
   const promoItems = React.useMemo(() => {
     return (cfg.promos ?? [])
@@ -128,7 +145,33 @@ export function PartnerMiniApp() {
         )}
       </div>
 
-      {view === "dashboard" ? (
+      {/* Not a partner view */}
+      {isAuthenticated && !partner && !authLoading ? (
+        <div className="flex h-[80vh] flex-col items-center justify-center p-6 text-center">
+          <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-neonBlue/10 text-neonBlue">
+            <TrendingUp size={40} />
+          </div>
+          <h2 className="mb-2 text-2xl font-bold text-white">Станьте партнером</h2>
+          <p className="mb-8 text-white/60">
+            Зарабатывайте на рекомендациях нашего сервиса. Получайте до {payoutPolicy.clientDirectPct}% с каждого заказа ваших клиентов и до {payoutPolicy.teamLevel1Pct}% с заказов их команд.
+          </p>
+          <Button 
+            className="w-full" 
+            size="lg" 
+            onClick={handleRegister}
+            disabled={isRegistering}
+          >
+            {isRegistering ? (
+              <>
+                <Loader2 className="mr-2 animate-spin" size={18} />
+                Регистрация...
+              </>
+            ) : (
+              "Зарегистрироваться как партнер"
+            )}
+          </Button>
+        </div>
+      ) : view === "dashboard" ? (
         <div className="space-y-5">
           <div className="flex items-end justify-between gap-3">
             <div>

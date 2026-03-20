@@ -117,6 +117,7 @@ export function AdminDashboard() {
             lastSeenAt: u.last_seen_at ? Date.parse(u.last_seen_at) : Date.now(),
             modelStatus: (u.avatar_status || "none") as any,
             astriaModelId: u.astria_model_id || "",
+            isPartner: !!u.is_partner,
             sessions: [],
             spentRub: 0,
             ordersCount: 0,
@@ -139,7 +140,7 @@ export function AdminDashboard() {
             flags: [],
           })),
           partners: partners.map((p) => ({
-            partnerId: p.public_id,
+            partnerId: String(p.public_id),
             userId: p.id,
             username: p.username || "",
             telegramId: p.tg_id || 0,
@@ -154,8 +155,19 @@ export function AdminDashboard() {
               lockedRub: p.locked_rub,
               paidOutRub: p.paid_out_rub,
             },
-            stats: { clicks: 0, signups: 0, paid: 0, earningsRub: p.available_rub, turnoverRub: 0, teamL1: 10, teamL2: 5 },
-            links: { client: "", team: "" },
+            stats: {
+              clicks: p.clicks_count || 0,
+              signups: p.signups_count || 0,
+              paid: p.paid_orders_count || 0,
+              earningsRub: p.available_rub,
+              turnoverRub: p.turnover_rub || 0,
+              teamL1: 0, // Should be calculated if needed
+              teamL2: 0, // Should be calculated if needed
+            },
+            links: {
+              client: `https://t.me/bot?start=${p.client_code}`,
+              team: `https://t.me/bot?start=${p.team_code}`,
+            },
             riskFlags: [],
           })),
           withdrawals: withdrawals.map((w) => ({

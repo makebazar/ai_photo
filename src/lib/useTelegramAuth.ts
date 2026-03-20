@@ -81,7 +81,7 @@ function clearAuthFromStorage() {
   }
 }
 
-async function loginViaTelegram(): Promise<AuthResult> {
+async function loginViaTelegram(preferredRole?: string): Promise<AuthResult> {
   const initData = getInitData();
   const startParam = getStartParam();
 
@@ -90,6 +90,7 @@ async function loginViaTelegram(): Promise<AuthResult> {
     initDataLength: initData?.length,
     initDataPreview: initData?.slice(0, 50) + "...",
     startParam,
+    preferredRole,
     apiBase: API_BASE,
   });
 
@@ -104,6 +105,7 @@ async function loginViaTelegram(): Promise<AuthResult> {
       "Content-Type": "application/json",
       "X-Telegram-Init-Data": initData,
       ...(startParam ? { "X-Telegram-Start-Param": startParam } : {}),
+      ...(preferredRole ? { "X-Telegram-Preferred-Role": preferredRole } : {}),
     },
     body: JSON.stringify({}),
   });
@@ -146,7 +148,7 @@ export function useTelegramAuth() {
     isAuthenticated: false,
   });
 
-  const login = React.useCallback(async (force = false) => {
+  const login = React.useCallback(async (force = false, role?: string) => {
     setState((prev) => ({ ...prev, isLoading: true, error: null }));
 
     try {
@@ -154,6 +156,8 @@ export function useTelegramAuth() {
       if (!force) {
         const stored = loadAuthFromStorage();
         if (stored) {
+          // If stored role is different from requested, we might want to re-auth
+          // But for now, just use stored.
           setState({
             user: stored.user,
             partner: stored.partner,
@@ -180,7 +184,7 @@ export function useTelegramAuth() {
         throw error;
       }
 
-      const result = await loginViaTelegram();
+      const result = await loginViaTelegram(role);
       saveAuthToStorage(result);
 
       setState({
@@ -219,9 +223,13 @@ export function useTelegramAuth() {
 
   // Auto-login on mount if inside Telegram
   React.useEffect(() => {
+    // Determine role from path
+    const pathname = window.location.pathname;
+    const roleFromPath = pathname.startsWith("/partner") ? "partner" : pathname.startsWith("/admin") ? "admin" : "client";
+
     // Only auto-login if we have initData (inside Telegram)
     if (isTelegramWebApp() && getInitData()) {
-      login().catch(() => {
+      login(false, roleFromPath).catch(() => {
         // Ignore auto-login errors
       });
     } else {

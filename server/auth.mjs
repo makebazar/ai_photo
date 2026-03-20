@@ -21,22 +21,28 @@ function pickStartParam(req) {
   return null;
 }
 
+function pickPreferredRole(req) {
+  const h = req.headers["x-telegram-preferred-role"];
+  if (h) return String(h);
+  return null;
+}
+
 /**
  * Determine which bot token to use based on start_param or route
- * - partner_/team_/pt_ → TELEGRAM_PARTNER_BOT_TOKEN
- * - client_/cl_ or default → TELEGRAM_BOT_TOKEN
  */
-function getBotTokenForRole(startParam) {
-  if (startParam && (startParam.startsWith("partner_") || startParam.startsWith("pt_") || startParam.startsWith("team_"))) {
+function getBotTokenForRole(startParam, preferredRole) {
+  const role = preferredRole || getRoleFromStartParam(startParam);
+  if (role === "partner") {
     return process.env.TELEGRAM_PARTNER_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
   }
   return process.env.TELEGRAM_BOT_TOKEN;
 }
 
 /**
- * Determine role from start_param
+ * Determine role from start_param or preferred role
  */
-function getRoleFromStartParam(startParam) {
+function getRoleFromStartParam(startParam, preferredRole) {
+  if (preferredRole === "partner" || preferredRole === "admin") return preferredRole;
   if (!startParam) return "client";
   if (startParam.startsWith("partner_") || startParam.startsWith("pt_") || startParam.startsWith("team_")) {
     return "partner";
@@ -48,6 +54,7 @@ export function requireTelegramAuth(req, opts = {}) {
   const { requireRole } = opts;
   const initData = pickInitData(req);
   const startParam = pickStartParam(req);
+  const preferredRole = pickPreferredRole(req);
 
   // Логирование для отладки
   console.log("[Telegram Auth] Request data:", {
@@ -55,25 +62,18 @@ export function requireTelegramAuth(req, opts = {}) {
     initDataLength: initData?.length,
     initDataPreview: initData?.slice(0, 100) + "...",
     startParam,
+    preferredRole,
     headers: {
       "x-telegram-init-data": req.headers["x-telegram-init-data"] ? "present" : "missing",
       "x-telegram-start-param": req.headers["x-telegram-start-param"] ? "present" : "missing",
+      "x-telegram-preferred-role": req.headers["x-telegram-preferred-role"] || "missing",
     },
-    query: {
-      initData: req.query?.initData ? "present" : "missing",
-      startParam: req.query?.startParam,
-    },
-    body: {
-      initData: req.body?.initData ? "present" : "missing",
-      startParam: req.body?.startParam,
-      tgId: req.body?.tgId,
-      username: req.body?.username,
-    },
+    // ...
   });
 
   if (initData) {
     // Determine which bot token to use
-    const botToken = getBotTokenForRole(startParam);
+    const botToken = getBotTokenForRole(startParam, preferredRole);
     if (!botToken) {
       console.error("[Telegram Auth] Bot token is not configured");
       throw httpError(500, "Telegram bot token is not configured");
@@ -85,7 +85,7 @@ export function requireTelegramAuth(req, opts = {}) {
       throw httpError(401, "Invalid Telegram initData");
     }
 
-    const role = getRoleFromStartParam(startParam);
+    const role = getRoleFromStartParam(startParam, preferredRole);
 
     // If specific role is required, validate it
     if (requireRole && role !== requireRole) {
@@ -97,13 +97,15 @@ export function requireTelegramAuth(req, opts = {}) {
       username: result.user.username,
       role,
       startParam,
+      preferredRole,
     });
 
     return {
       kind: "telegram",
       user: result.user,
       role,
-      startParam
+      startParam,
+      preferredRole
     };
   }
 
@@ -112,9 +114,9 @@ export function requireTelegramAuth(req, opts = {}) {
     const tgId = Number(req.body?.tgId ?? req.query?.tgId);
     if (Number.isFinite(tgId)) {
       const username = req.body?.username ? String(req.body.username) : null;
-      const role = requireRole || getRoleFromStartParam(startParam) || "client";
+      const role = requireRole || preferredRole || getRoleFromStartParam(startParam) || "client";
       console.log("[Telegram Auth] Debug auth:", { tgId, username, role });
-      return { kind: "debug", user: { id: tgId, username }, role, startParam };
+      return { kind: "debug", user: { id: tgId, username }, role, startParam, preferredRole };
     }
   }
 

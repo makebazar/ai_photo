@@ -19,6 +19,7 @@ export type UserModelRow = {
   modelStatus: "none" | "training" | "ready" | "failed";
   astriaModelId?: string;
   lastTrainedAt?: number | null;
+  isPartner?: boolean;
   sessions: string[];
   spentRub: number;
   ordersCount: number;
