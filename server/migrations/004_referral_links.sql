@@ -236,12 +236,12 @@ CREATE OR REPLACE FUNCTION track_referral_click(
   p_utm_content text DEFAULT NULL,
   p_utm_term text DEFAULT NULL
 )
-RETURNS uuid AS $$
+RETURNS bigint AS $$
 DECLARE
   v_partner_id uuid;
   v_kind text;
   v_code text;
-  v_click_id uuid;
+  v_click_id bigint;
 BEGIN
   -- Get link info
   SELECT partner_id, kind, code INTO v_partner_id, v_kind, v_code
@@ -292,7 +292,7 @@ $$ LANGUAGE plpgsql;
 
 -- Function to mark click as converted
 CREATE OR REPLACE FUNCTION mark_referral_converted(
-  p_click_id uuid,
+  p_click_id bigint,
   p_order_id uuid
 )
 RETURNS void AS $$
