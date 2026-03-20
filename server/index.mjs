@@ -817,32 +817,43 @@ async function main() {
       let partner = null;
       let attribution = null;
       
-      // Handle partner registration (if role is partner or start_param indicates team referral)
-      if (role === "partner" || (startParam && (startParam.startsWith("partner_") || startParam.startsWith("pt_") || startParam.startsWith("team_")))) {
-        const teamCode = startParam && startParam.includes("_") ? startParam.split("_")[1] : null;
-        console.log(`[Auth] Registering partner for user ${user.id}. TeamCode: ${teamCode}`);
-        partner = await ensurePartner(db, { userId: user.id, teamCode });
-      }
-      
-      // Handle client referral attribution
+      // Handle referral attribution (unified logic)
       if (startParam) {
         const ref = await resolveReferralCode(db, startParam);
         console.log(`[Auth] Resolving startParam ${startParam}:`, ref);
 
-        if (ref && ref.kind === "client") {
-          attribution = await ensureClientAttribution(db, { userId: user.id, clientCode: startParam });
-          console.log(`[Auth] Client attribution created:`, attribution);
-          
-          // Track click automatically if it's a valid referral
+        if (ref) {
+          // 1. Always track click
           const click = await trackReferralClick(db, {
             linkId: ref.linkId,
             partnerId: ref.partnerId,
-            kind: "client",
+            kind: ref.kind,
             code: startParam,
             userId: user.id,
           });
-          console.log(`[Auth] Click tracked:`, click);
+          console.log(`[Auth] Click tracked for user ${user.id}:`, click);
+
+          // 2. Handle client attribution if it's a client link
+          if (ref.kind === "client") {
+            attribution = await ensureClientAttribution(db, { userId: user.id, clientCode: startParam });
+            console.log(`[Auth] Client attribution result for user ${user.id}:`, attribution);
+          }
+
+          // 3. Handle partner registration if it's a team link (and not already a partner)
+          if (ref.kind === "team" && !partner) {
+            console.log(`[Auth] Registering partner for user ${user.id} via team link. ParentPartnerId: ${ref.partnerId}`);
+            partner = await ensurePartner(db, { userId: user.id, teamCode: startParam });
+          }
+        } else {
+          console.log(`[Auth] startParam ${startParam} could not be resolved to any partner or link`);
         }
+      }
+
+      // Fallback partner registration (explicit role or legacy start_param)
+      if (!partner && (role === "partner" || (startParam && (startParam.startsWith("partner_") || startParam.startsWith("pt_") || startParam.startsWith("team_"))))) {
+        const teamCode = startParam && startParam.includes("_") ? startParam : null;
+        console.log(`[Auth] Registering partner for user ${user.id} (fallback). TeamCode: ${teamCode}`);
+        partner = await ensurePartner(db, { userId: user.id, teamCode });
       }
 
       return {

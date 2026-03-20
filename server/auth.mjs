@@ -13,7 +13,13 @@ function pickInitData(req) {
 
 function pickStartParam(req) {
   const h = req.headers["x-telegram-start-param"];
-  if (h) return String(h);
+  if (h) {
+    try {
+      return decodeURIComponent(String(h));
+    } catch {
+      return String(h);
+    }
+  }
   const q = req.query?.startParam;
   if (q) return String(q);
   const b = req.body?.startParam;
@@ -102,7 +108,10 @@ export function requireTelegramAuth(req, opts = {}) {
       throw httpError(401, "Invalid Telegram initData");
     }
 
-    const role = getRoleFromStartParam(startParam, preferredRole);
+    // Prioritize start_param from initData (it's signed by Telegram)
+    const effectiveStartParam = result.data?.start_param || startParam;
+
+    const role = getRoleFromStartParam(effectiveStartParam, preferredRole);
 
     // If specific role is required, validate it
     if (requireRole && role !== requireRole) {
@@ -113,7 +122,7 @@ export function requireTelegramAuth(req, opts = {}) {
       userId: result.user.id,
       username: result.user.username,
       role,
-      startParam,
+      startParam: effectiveStartParam,
       preferredRole,
     });
 
@@ -121,7 +130,7 @@ export function requireTelegramAuth(req, opts = {}) {
       kind: "telegram",
       user: result.user,
       role,
-      startParam,
+      startParam: effectiveStartParam,
       preferredRole
     };
   }

@@ -120,7 +120,16 @@ export function getTelegramUser(): TelegramUser | null {
  */
 export function getStartParam(): string | null {
   const data = getInitDataUnsafe();
-  return data?.start_param || null;
+  if (data?.start_param) return data.start_param;
+
+  // Fallback: check URL query params (some platforms might not parse it into initDataUnsafe immediately)
+  if (typeof window !== "undefined") {
+    const params = new URLSearchParams(window.location.search);
+    const tgStartParam = params.get("tgWebAppStartParam");
+    if (tgStartParam) return tgStartParam;
+  }
+
+  return null;
 }
 
 /**
