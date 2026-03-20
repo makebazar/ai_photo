@@ -149,8 +149,8 @@ async function getPartnerDashboard(db, partnerPublicId) {
       status: p.status,
       createdAt: p.created_at,
       links: {
-        client: `t.me/bot?start=${p.client_code}`,
-        team: `t.me/bot?start=${p.team_code}`,
+        client: `https://t.me/${process.env.TELEGRAM_BOT_NAME || 'ai_photo_testast_bot'}?start=${p.client_code}`,
+        team: `https://t.me/${process.env.TELEGRAM_PARTNER_BOT_NAME || 'ai_photo_testast_partner_bot'}?start=${p.team_code}`,
       },
     },
     balances: {
@@ -1278,8 +1278,8 @@ async function main() {
         ...r,
         // Generate full URL based on kind
         url: r.kind === 'client' 
-          ? `t.me/${process.env.TELEGRAM_BOT_NAME || 'bot'}?start=${r.code}`
-          : `t.me/${process.env.TELEGRAM_PARTNER_BOT_NAME || 'bot'}?start=${r.code}`,
+          ? `https://t.me/${process.env.TELEGRAM_BOT_NAME || 'ai_photo_testast_bot'}?start=${r.code}`
+          : `https://t.me/${process.env.TELEGRAM_PARTNER_BOT_NAME || 'ai_photo_testast_partner_bot'}?start=${r.code}`,
       }));
     });
 
@@ -1338,8 +1338,8 @@ async function main() {
       link: {
         ...link,
         url: link.kind === 'client'
-          ? `https://t.me/ai_photo_testast_bot?start=${link.code}`
-          : `https://t.me/ai_photo_testast_partner_bot?start=${link.code}`,
+          ? `https://t.me/${process.env.TELEGRAM_BOT_NAME || 'ai_photo_testast_bot'}?start=${link.code}`
+          : `https://t.me/${process.env.TELEGRAM_PARTNER_BOT_NAME || 'ai_photo_testast_partner_bot'}?start=${link.code}`,
       }
     };
   });
