@@ -1,4 +1,6 @@
--- Fix track_referral_click to return bigint (id is bigserial)
+-- Fix track_referral_click: Drop first because we change return type from uuid to bigint
+DROP FUNCTION IF EXISTS track_referral_click(uuid, uuid, inet, text, text, text, text, text, text);
+
 CREATE OR REPLACE FUNCTION track_referral_click(
   p_link_id uuid,
   p_user_id uuid DEFAULT NULL,
@@ -64,7 +66,9 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Fix mark_referral_converted to accept bigint for p_click_id
+-- Fix mark_referral_converted: Drop first because we change p_click_id type from uuid to bigint
+DROP FUNCTION IF EXISTS mark_referral_converted(uuid, uuid);
+
 CREATE OR REPLACE FUNCTION mark_referral_converted(
   p_click_id bigint,
   p_order_id uuid
