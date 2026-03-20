@@ -152,27 +152,45 @@ export function useTelegramAuth() {
     setState((prev) => ({ ...prev, isLoading: true, error: null }));
 
     try {
-      // Check storage first
-      if (!force) {
-        const stored = loadAuthFromStorage();
-        if (stored) {
-          // If stored role is different from requested, we might want to re-auth
-          // But for now, just use stored.
-          setState({
-            user: stored.user,
-            partner: stored.partner,
-            role: stored.role,
-            isLoading: false,
-            error: null,
-            isAuthenticated: true,
-          });
-          return stored;
-        }
+      // If we are NOT in Telegram, we can rely on storage.
+      // If we ARE in Telegram, we should ALWAYS hit the server to ensure user exists (upsert)
+      // and get fresh data, unless force is false and we just want to show UI quickly.
+      
+      const stored = loadAuthFromStorage();
+      const inTelegram = isTelegramWebApp() && !!getInitData();
+
+      if (!force && !inTelegram && stored) {
+        setState({
+          user: stored.user,
+          partner: stored.partner,
+          role: stored.role,
+          isLoading: false,
+          error: null,
+          isAuthenticated: true,
+        });
+        return stored;
       }
 
-      // Only attempt Telegram login if running inside Telegram WebApp
-      if (!isTelegramWebApp()) {
-        const error = new Error("Not running inside Telegram WebApp");
+      // If in Telegram, we'll call loginViaTelegram below even if we have stored data,
+      // to ensure the backend upserts the user (in case they were deleted from admin).
+
+      if (inTelegram) {
+        const result = await loginViaTelegram(role);
+        saveAuthToStorage(result);
+        setState({
+          user: result.user,
+          partner: result.partner,
+          role: result.role,
+          isLoading: false,
+          error: null,
+          isAuthenticated: true,
+        });
+        return result;
+      }
+
+      // Not in Telegram and no stored data or force=true
+      if (!stored && !inTelegram) {
+        const error = new Error("Not running inside Telegram WebApp and no session found");
         setState({
           user: null,
           partner: null,
@@ -184,19 +202,7 @@ export function useTelegramAuth() {
         throw error;
       }
 
-      const result = await loginViaTelegram(role);
-      saveAuthToStorage(result);
-
-      setState({
-        user: result.user,
-        partner: result.partner,
-        role: result.role,
-        isLoading: false,
-        error: null,
-        isAuthenticated: true,
-      });
-
-      return result;
+      return stored!;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Authentication failed";
       setState((prev) => ({
