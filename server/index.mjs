@@ -823,13 +823,13 @@ async function main() {
         console.log(`[Auth] Resolving startParam ${startParam}:`, ref);
 
         if (ref) {
-          // 1. Always track click
+          // Track click automatically if it's a valid referral
           const click = await trackReferralClick(db, {
             linkId: ref.linkId,
             partnerId: ref.partnerId,
             kind: ref.kind,
             code: startParam,
-            userId: user.id,
+            userId: user.id, // UUID
           });
           console.log(`[Auth] Click tracked for user ${user.id}:`, click);
 
@@ -1491,16 +1491,29 @@ async function main() {
     }
 
     const result = await withTx(pool, async (db) => {
-      const { rows } = linkId
-        ? await db.query(`select * from track_referral_click($1, NULL, $2, $3, $4, $5, $6, $7, $8)`,
-            [linkId, null, null, utm.source || null, utm.medium || null, utm.campaign || null, utm.content || null, utm.term || null])
-        : await db.query(`select id from referral_links where code = $1`, [code]);
+      if (linkId) {
+        // Use the click tracking function directly
+        await trackReferralClick(db, {
+          linkId,
+          utm: utm,
+        });
+        return { linkId };
+      } else {
+        const { rows } = await db.query(`select id, partner_id, kind from referral_links where code = $1`, [code]);
+        if (!rows[0]) {
+          throw httpError(404, "Link not found");
+        }
+        
+        await trackReferralClick(db, {
+          linkId: rows[0].id,
+          partnerId: rows[0].partner_id,
+          kind: rows[0].kind,
+          code: code,
+          utm: utm,
+        });
 
-      if (!rows[0]) {
-        throw httpError(404, "Link not found");
+        return { linkId: rows[0].id };
       }
-
-      return { linkId: rows[0].id || rows[0].link_id };
     });
 
     return { ok: true, ...result };
