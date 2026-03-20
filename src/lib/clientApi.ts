@@ -2,7 +2,20 @@
  * Client API - real backend integration
  */
 
+import { getInitData } from "./tg";
+
 const API_BASE = import.meta.env.VITE_API_BASE || "";
+
+/**
+ * Helper to get auth headers for Telegram
+ */
+function getAuthHeaders() {
+  const initData = getInitData();
+  return {
+    "Content-Type": "application/json",
+    ...(initData ? { "X-Telegram-Init-Data": initData } : {}),
+  };
+}
 
 export type PlanId = "standard" | "pro";
 
@@ -61,7 +74,7 @@ export type StylePack = {
 export async function createOrder(planId: PlanId, clientCode?: string): Promise<Order> {
   const res = await fetch(`${API_BASE}/api/client/order`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: getAuthHeaders(),
     body: JSON.stringify({ planId, clientCode }),
   });
   if (!res.ok) throw new Error(await res.text());
@@ -74,6 +87,7 @@ export async function payOrder(orderId: string): Promise<{ paidAt: string }> {
   // For now, simulate payment
   const res = await fetch(`${API_BASE}/api/client/order/${orderId}/pay`, {
     method: "POST",
+    headers: getAuthHeaders(),
   });
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
@@ -88,7 +102,7 @@ export async function startAvatarTraining(photoUrls: string[], clientCode?: stri
 }> {
   const res = await fetch(`${API_BASE}/api/client/avatar/start`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: getAuthHeaders(),
     body: JSON.stringify({ photoUrls, clientCode }),
   });
   if (!res.ok) throw new Error(await res.text());
@@ -102,7 +116,7 @@ export async function getAvatarStatus(): Promise<{
   lastTrainedAt?: string;
 }> {
   const res = await fetch(`${API_BASE}/api/client/avatar`, {
-    headers: { "Content-Type": "application/json" },
+    headers: getAuthHeaders(),
   });
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
@@ -113,7 +127,7 @@ export async function getAvatarStatus(): Promise<{
 
 export async function listPacks(): Promise<StylePack[]> {
   const res = await fetch(`${API_BASE}/api/packs`, {
-    headers: { "Content-Type": "application/json" },
+    headers: getAuthHeaders(),
   });
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
@@ -133,7 +147,7 @@ export async function createPhotosession(params: {
 }): Promise<PhotoSession> {
   const res = await fetch(`${API_BASE}/api/client/photosession`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: getAuthHeaders(),
     body: JSON.stringify(params),
   });
   if (!res.ok) throw new Error(await res.text());
@@ -143,7 +157,7 @@ export async function createPhotosession(params: {
 
 export async function getPhotosession(sessionId: string): Promise<PhotoSession & { photos: GeneratedPhoto[] }> {
   const res = await fetch(`${API_BASE}/api/client/photosession/${sessionId}`, {
-    headers: { "Content-Type": "application/json" },
+    headers: getAuthHeaders(),
   });
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
@@ -152,7 +166,7 @@ export async function getPhotosession(sessionId: string): Promise<PhotoSession &
 
 export async function listPhotosessions(): Promise<PhotoSession[]> {
   const res = await fetch(`${API_BASE}/api/client/photosessions`, {
-    headers: { "Content-Type": "application/json" },
+    headers: getAuthHeaders(),
   });
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
@@ -173,7 +187,7 @@ export async function getPublicConfig(): Promise<{
   promos: any[];
 }> {
   const res = await fetch(`${API_BASE}/api/config`, {
-    headers: { "Content-Type": "application/json" },
+    headers: getAuthHeaders(),
   });
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();

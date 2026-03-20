@@ -2,17 +2,21 @@
  * Admin API client
  */
 
+import { getInitData } from "./tg";
+
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
 const ADMIN_TOKEN = import.meta.env.VITE_ADMIN_TOKEN || "";
 
 async function fetchAdmin<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  const initData = getInitData();
   const res = await fetch(`${API_BASE}${endpoint}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
       "X-Admin-Token": ADMIN_TOKEN,
       "X-Admin-Auth": "1", // Debug auth для прототипа
+      ...(initData ? { "X-Telegram-Init-Data": initData } : {}),
       ...options?.headers,
     },
   });

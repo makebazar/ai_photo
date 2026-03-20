@@ -2,7 +2,20 @@
  * Referral Links API client
  */
 
+import { getInitData } from "./tg";
+
 const API_BASE = import.meta.env.VITE_API_BASE || "";
+
+/**
+ * Helper to get auth headers for Telegram
+ */
+function getAuthHeaders() {
+  const initData = getInitData();
+  return {
+    "Content-Type": "application/json",
+    ...(initData ? { "X-Telegram-Init-Data": initData } : {}),
+  };
+}
 
 export type ReferralLink = {
   id: string;
@@ -77,7 +90,7 @@ export type ClientItem = {
 export async function getReferralLinks(): Promise<ReferralLink[]> {
   const res = await fetch(`${API_BASE}/api/ref/links`, {
     method: "GET",
-    headers: { "Content-Type": "application/json" },
+    headers: getAuthHeaders(),
   });
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
@@ -98,7 +111,7 @@ export async function createReferralLink(params: {
 }): Promise<ReferralLink> {
   const res = await fetch(`${API_BASE}/api/ref/links`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: getAuthHeaders(),
     body: JSON.stringify(params),
   });
   if (!res.ok) throw new Error(await res.text());
@@ -119,7 +132,7 @@ export async function updateReferralLink(
 ): Promise<ReferralLink> {
   const res = await fetch(`${API_BASE}/api/ref/links/${linkId}`, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
+    headers: getAuthHeaders(),
     body: JSON.stringify(params),
   });
   if (!res.ok) throw new Error(await res.text());
@@ -130,6 +143,7 @@ export async function updateReferralLink(
 export async function deleteReferralLink(linkId: string): Promise<void> {
   const res = await fetch(`${API_BASE}/api/ref/links/${linkId}`, {
     method: "DELETE",
+    headers: getAuthHeaders(),
   });
   if (!res.ok) throw new Error(await res.text());
 }
@@ -137,7 +151,7 @@ export async function deleteReferralLink(linkId: string): Promise<void> {
 export async function getPartnerStats(): Promise<PartnerStats> {
   const res = await fetch(`${API_BASE}/api/partner/stats`, {
     method: "GET",
-    headers: { "Content-Type": "application/json" },
+    headers: getAuthHeaders(),
   });
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
@@ -147,7 +161,7 @@ export async function getPartnerStats(): Promise<PartnerStats> {
 export async function getDownline(): Promise<{ level1: DownlinePartner[] }> {
   const res = await fetch(`${API_BASE}/api/partner/downline`, {
     method: "GET",
-    headers: { "Content-Type": "application/json" },
+    headers: getAuthHeaders(),
   });
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
@@ -157,7 +171,7 @@ export async function getDownline(): Promise<{ level1: DownlinePartner[] }> {
 export async function getClients(): Promise<ClientItem[]> {
   const res = await fetch(`${API_BASE}/api/partner/clients`, {
     method: "GET",
-    headers: { "Content-Type": "application/json" },
+    headers: getAuthHeaders(),
   });
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
@@ -177,7 +191,7 @@ export async function trackReferralClick(params: {
 }): Promise<{ linkId: string }> {
   const res = await fetch(`${API_BASE}/api/ref/click`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: getAuthHeaders(),
     body: JSON.stringify(params),
   });
   if (!res.ok) throw new Error(await res.text());
