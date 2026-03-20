@@ -798,29 +798,36 @@ async function main() {
     const result = await withTx(pool, async (db) => {
       const user = await upsertUser(db, { tgId, username });
       
+      console.log(`[Auth] User ${user.id} (tgId: ${tgId}) logged in. StartParam: ${startParam}, Role: ${role}`);
+
       let partner = null;
       let attribution = null;
       
       // Handle partner registration (if role is partner or start_param indicates team referral)
       if (role === "partner" || (startParam && (startParam.startsWith("partner_") || startParam.startsWith("pt_") || startParam.startsWith("team_")))) {
         const teamCode = startParam && startParam.includes("_") ? startParam.split("_")[1] : null;
+        console.log(`[Auth] Registering partner for user ${user.id}. TeamCode: ${teamCode}`);
         partner = await ensurePartner(db, { userId: user.id, teamCode });
       }
       
       // Handle client referral attribution
       if (startParam) {
-        const result = await resolveReferralCode(db, startParam);
-        if (result && result.kind === "client") {
+        const ref = await resolveReferralCode(db, startParam);
+        console.log(`[Auth] Resolving startParam ${startParam}:`, ref);
+
+        if (ref && ref.kind === "client") {
           attribution = await ensureClientAttribution(db, { userId: user.id, clientCode: startParam });
+          console.log(`[Auth] Client attribution created:`, attribution);
           
           // Track click automatically if it's a valid referral
-          await trackReferralClick(db, {
-            linkId: result.linkId,
-            partnerId: result.partnerId,
+          const click = await trackReferralClick(db, {
+            linkId: ref.linkId,
+            partnerId: ref.partnerId,
             kind: "client",
             code: startParam,
             userId: user.id,
           });
+          console.log(`[Auth] Click tracked:`, click);
         }
       }
 

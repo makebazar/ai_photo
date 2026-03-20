@@ -35,6 +35,8 @@ export function validateInitData(initData, botToken, opts = {}) {
     .map((k) => `${k}=${data[k]}`);
   const dataCheckString = pairs.join("\n");
 
+  console.log("[Telegram Auth] Validating initData. DataCheckString length:", dataCheckString.length);
+
   // Telegram WebApp: secret_key = HMAC_SHA256(bot_token, key="WebAppData")
   const secretKey = crypto.createHmac("sha256", "WebAppData").update(botToken).digest();
   const calcHash = crypto.createHmac("sha256", secretKey).update(dataCheckString).digest("hex");

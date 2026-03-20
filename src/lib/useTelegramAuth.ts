@@ -104,7 +104,7 @@ async function loginViaTelegram(preferredRole?: string): Promise<AuthResult> {
     headers: {
       "Content-Type": "application/json",
       "X-Telegram-Init-Data": initData,
-      ...(startParam ? { "X-Telegram-Start-Param": startParam } : {}),
+      ...(startParam ? { "X-Telegram-Start-Param": encodeURIComponent(startParam) } : {}),
       ...(preferredRole ? { "X-Telegram-Preferred-Role": preferredRole } : {}),
     },
     body: JSON.stringify({}),
