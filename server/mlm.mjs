@@ -133,7 +133,7 @@ export async function trackReferralClick(db, params) {
   if (linkId) {
     // Use stored procedure for link-based tracking
     const { rows } = await db.query(
-      `select * from track_referral_click($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      `select track_referral_click($1, $2, $3, $4, $5, $6, $7, $8, $9) as id`,
       [linkId, userId || null, ip || null, ua || null, 
        utm?.source || null, utm?.medium || null, utm?.campaign || null, 
        utm?.content || null, utm?.term || null]

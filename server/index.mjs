@@ -27,6 +27,20 @@ async function upsertUser(db, { tgId, username }) {
   return rows[0];
 }
 
+// Helper for generating Telegram links
+function makeTgLink(botName, code, kind) {
+  const defaultBot = kind === 'team' ? 'ai_photo_testast_partner_bot' : 'ai_photo_testast_bot';
+  const name = botName || defaultBot;
+  const appName = process.env.TELEGRAM_APP_NAME;
+  
+  if (appName) {
+    return `https://t.me/${name}/${appName}?startapp=${code}`;
+  }
+  // If no app name, use the direct startapp parameter on the bot link
+  // This works if the Mini App is the "Main Mini App" of the bot
+  return `https://t.me/${name}?startapp=${code}`;
+}
+
 async function resolvePartnerByCode(db, code) {
   const result = await resolveReferralCode(db, code);
   if (!result) return null;
@@ -149,8 +163,8 @@ async function getPartnerDashboard(db, partnerPublicId) {
       status: p.status,
       createdAt: p.created_at,
       links: {
-        client: `https://t.me/${process.env.TELEGRAM_BOT_NAME || 'ai_photo_testast_bot'}?start=${p.client_code}`,
-        team: `https://t.me/${process.env.TELEGRAM_PARTNER_BOT_NAME || 'ai_photo_testast_partner_bot'}?start=${p.team_code}`,
+        client: makeTgLink(process.env.TELEGRAM_BOT_NAME, p.client_code, 'client'),
+        team: makeTgLink(process.env.TELEGRAM_PARTNER_BOT_NAME, p.team_code, 'team'),
       },
     },
     balances: {
@@ -624,7 +638,7 @@ async function main() {
           b.available_rub,
           b.locked_rub,
           b.paid_out_rub,
-          (select count(*)::int from referral_clicks where partner_id = p.id and kind = 'client') as clicks_count,
+          (select count(*)::int from referral_clicks where partner_id = p.id) as clicks_count,
           (select count(*)::int from client_attribution where partner_id = p.id) as signups_count,
           (select count(*)::int from orders where attribution_partner_id = p.id and status = 'paid') as paid_orders_count,
           (select coalesce(sum(amount_rub), 0)::int from orders where attribution_partner_id = p.id and status = 'paid') as turnover_rub
@@ -1282,9 +1296,8 @@ async function main() {
       );
 
       return rows.map((r) => {
-        const url = r.kind === 'client' 
-          ? `https://t.me/${process.env.TELEGRAM_BOT_NAME || 'ai_photo_testast_bot'}?start=${r.code}`
-          : `https://t.me/${process.env.TELEGRAM_PARTNER_BOT_NAME || 'ai_photo_testast_partner_bot'}?start=${r.code}`;
+        const botName = r.kind === 'client' ? process.env.TELEGRAM_BOT_NAME : process.env.TELEGRAM_PARTNER_BOT_NAME;
+        const url = makeTgLink(botName, r.code, r.kind);
         console.log(`[Referral] Found link ${r.id}: code=${r.code}, url=${url}`);
         return { ...r, url };
       });
@@ -1340,9 +1353,8 @@ async function main() {
       );
 
       const createdLink = rows[0];
-      const url = kind === 'client'
-        ? `https://t.me/${process.env.TELEGRAM_BOT_NAME || 'ai_photo_testast_bot'}?start=${uniqueCode}`
-        : `https://t.me/${process.env.TELEGRAM_PARTNER_BOT_NAME || 'ai_photo_testast_partner_bot'}?start=${uniqueCode}`;
+      const botName = kind === 'client' ? process.env.TELEGRAM_BOT_NAME : process.env.TELEGRAM_PARTNER_BOT_NAME;
+      const url = makeTgLink(botName, uniqueCode, kind);
       
       console.log("[Referral] Created link success:", { id: createdLink.id, code: uniqueCode, url });
 
@@ -1420,11 +1432,12 @@ async function main() {
       );
 
       const updatedLink = rows[0];
+      const botName = updatedLink.kind === 'client' ? process.env.TELEGRAM_BOT_NAME : process.env.TELEGRAM_PARTNER_BOT_NAME;
+      const url = makeTgLink(botName, updatedLink.code, updatedLink.kind);
+
       return {
         ...updatedLink,
-        url: updatedLink.kind === 'client' 
-          ? `https://t.me/${process.env.TELEGRAM_BOT_NAME || 'ai_photo_testast_bot'}?start=${updatedLink.code}`
-          : `https://t.me/${process.env.TELEGRAM_PARTNER_BOT_NAME || 'ai_photo_testast_partner_bot'}?start=${updatedLink.code}`,
+        url,
       };
     });
 
