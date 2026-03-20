@@ -10,6 +10,7 @@ import {
   RefreshCw,
   LogOut,
   Lock,
+  Trash2,
 } from "lucide-react";
 import * as React from "react";
 import { Badge } from "../../components/ui/Badge";
@@ -21,6 +22,7 @@ import { useAdminStore, type AdminAction } from "./adminStore";
 import {
   getUsers, getOrders, getPartners, getWithdrawals,
   getAdminConfig, getPacks, getPromos, getSessions,
+  deleteUser,
   type AdminPack as ApiAdminPack,
   type AdminPromo as ApiAdminPromo,
 } from "../../lib/adminApi";
@@ -58,6 +60,21 @@ export function AdminDashboard() {
     setIsAuthenticated(false);
     setPassword("");
     toast.push({ title: "Выход из системы", variant: "success" });
+  };
+
+  const handleDeleteUser = async (userId: string) => {
+    if (!confirm("Вы уверены, что хотите удалить этого пользователя? Все связанные данные (аватары, заказы) будут также удалены.")) return;
+    
+    try {
+      setLoading(true);
+      await deleteUser(userId);
+      toast.push({ title: "Пользователь удален", variant: "success" });
+      await refreshData();
+    } catch (err) {
+      toast.push({ title: "Ошибка при удалении", description: String(err), variant: "danger" });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const refreshData = async () => {
@@ -303,7 +320,7 @@ export function AdminDashboard() {
 
         {/* Content */}
         {nav === "overview" && <Overview state={state} />}
-        {nav === "users" && <UsersList users={state.users} />}
+        {nav === "users" && <UsersList users={state.users} onDelete={handleDeleteUser} />}
         {nav === "orders" && <OrdersList orders={state.orders} />}
         {nav === "partners" && <PartnersList partners={state.partners} />}
         {nav === "withdrawals" && <WithdrawalsList withdrawals={state.withdrawals} />}
@@ -349,7 +366,7 @@ function StatCard({ title, value }: { title: string; value: number }) {
   );
 }
 
-function UsersList({ users }: { users: any[] }) {
+function UsersList({ users, onDelete }: { users: any[]; onDelete: (userId: string) => void }) {
   return (
     <Card>
       <div className="overflow-x-auto">
@@ -360,6 +377,7 @@ function UsersList({ users }: { users: any[] }) {
               <th className="p-3">Username</th>
               <th className="p-3">Telegram ID</th>
               <th className="p-3">Статус</th>
+              <th className="p-3 text-right">Действия</th>
             </tr>
           </thead>
           <tbody>
@@ -373,11 +391,20 @@ function UsersList({ users }: { users: any[] }) {
                     {u.modelStatus}
                   </span>
                 </td>
+                <td className="p-3 text-right">
+                  <button
+                    onClick={() => onDelete(u.userId)}
+                    className="rounded-lg p-2 text-white/40 transition hover:bg-red-500/10 hover:text-red-400"
+                    title="Удалить пользователя"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </td>
               </tr>
             ))}
             {users.length === 0 && (
               <tr>
-                <td colSpan={4} className="p-8 text-center text-white/60">
+                <td colSpan={5} className="p-8 text-center text-white/60">
                   Нет пользователей
                 </td>
               </tr>
