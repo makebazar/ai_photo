@@ -1274,13 +1274,13 @@ async function main() {
         [partnerId]
       );
 
-      return rows.map((r) => ({
-        ...r,
-        // Generate full URL based on kind
-        url: r.kind === 'client' 
+      return rows.map((r) => {
+        const url = r.kind === 'client' 
           ? `https://t.me/${process.env.TELEGRAM_BOT_NAME || 'ai_photo_testast_bot'}?start=${r.code}`
-          : `https://t.me/${process.env.TELEGRAM_PARTNER_BOT_NAME || 'ai_photo_testast_partner_bot'}?start=${r.code}`,
-      }));
+          : `https://t.me/${process.env.TELEGRAM_PARTNER_BOT_NAME || 'ai_photo_testast_partner_bot'}?start=${r.code}`;
+        console.log(`[Referral] Found link ${r.id}: code=${r.code}, url=${url}`);
+        return { ...r, url };
+      });
     });
 
     return { ok: true, links };
@@ -1292,7 +1292,7 @@ async function main() {
     const tgId = Number(auth.user.id);
     const body = req.body ?? {};
 
-    const link = await withTx(pool, async (db) => {
+    const result = await withTx(pool, async (db) => {
       // Get partner
       const { rows: pRows } = await db.query(
         `select id from partners where user_id = (select id from users where tg_id = $1)`,
@@ -1320,6 +1320,8 @@ async function main() {
       const codes = makeReferralCodes(publicId);
       const uniqueCode = kind === 'client' ? codes.clientCode : codes.teamCode;
 
+      console.log("[Referral] Creating link:", { partnerId, kind, uniqueCode });
+
       const { rows } = await db.query(
         `insert into referral_links (
           partner_id, kind, code, name, description, 
@@ -1330,17 +1332,22 @@ async function main() {
         [partnerId, kind, uniqueCode, name, description, utmSource, utmMedium, utmCampaign, utmContent, utmTerm, expiresAt, maxUses]
       );
 
-      return rows[0];
+      const createdLink = rows[0];
+      const url = kind === 'client'
+        ? `https://t.me/${process.env.TELEGRAM_BOT_NAME || 'ai_photo_testast_bot'}?start=${uniqueCode}`
+        : `https://t.me/${process.env.TELEGRAM_PARTNER_BOT_NAME || 'ai_photo_testast_partner_bot'}?start=${uniqueCode}`;
+      
+      console.log("[Referral] Created link success:", { id: createdLink.id, code: uniqueCode, url });
+
+      return {
+        ...createdLink,
+        url,
+      };
     });
 
     return {
       ok: true,
-      link: {
-        ...link,
-        url: link.kind === 'client'
-          ? `https://t.me/${process.env.TELEGRAM_BOT_NAME || 'ai_photo_testast_bot'}?start=${link.code}`
-          : `https://t.me/${process.env.TELEGRAM_PARTNER_BOT_NAME || 'ai_photo_testast_partner_bot'}?start=${link.code}`,
-      }
+      link: result,
     };
   });
 
@@ -1405,17 +1412,18 @@ async function main() {
         values
       );
 
-      return rows[0];
+      const updatedLink = rows[0];
+      return {
+        ...updatedLink,
+        url: updatedLink.kind === 'client' 
+          ? `https://t.me/${process.env.TELEGRAM_BOT_NAME || 'ai_photo_testast_bot'}?start=${updatedLink.code}`
+          : `https://t.me/${process.env.TELEGRAM_PARTNER_BOT_NAME || 'ai_photo_testast_partner_bot'}?start=${updatedLink.code}`,
+      };
     });
 
     return { 
       ok: true, 
-      link: {
-        ...link,
-        url: link.kind === 'client' 
-          ? `t.me/${process.env.TELEGRAM_BOT_NAME || 'bot'}?start=${link.code}`
-          : `t.me/${process.env.TELEGRAM_PARTNER_BOT_NAME || 'bot'}?start=${link.code}`,
-      }
+      link,
     };
   });
 
