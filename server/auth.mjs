@@ -73,13 +73,30 @@ export function requireTelegramAuth(req, opts = {}) {
 
   if (initData) {
     // Determine which bot token to use
-    const botToken = getBotTokenForRole(startParam, preferredRole);
+    let botToken = getBotTokenForRole(startParam, preferredRole);
     if (!botToken) {
       console.error("[Telegram Auth] Bot token is not configured");
       throw httpError(500, "Telegram bot token is not configured");
     }
 
-    const result = validateInitData(initData, botToken, { maxAgeSeconds: 24 * 60 * 60 });
+    let result = validateInitData(initData, botToken, { maxAgeSeconds: 24 * 60 * 60 });
+    
+    // If validation failed and we didn't have an explicit preferredRole, try the other token
+    if ((!result || !result.user) && !preferredRole) {
+      const otherToken = botToken === process.env.TELEGRAM_BOT_TOKEN 
+        ? process.env.TELEGRAM_PARTNER_BOT_TOKEN 
+        : process.env.TELEGRAM_BOT_TOKEN;
+      
+      if (otherToken && otherToken !== botToken) {
+        console.log("[Telegram Auth] Initial validation failed, trying alternative token...");
+        result = validateInitData(initData, otherToken, { maxAgeSeconds: 24 * 60 * 60 });
+        if (result && result.user) {
+          botToken = otherToken;
+          console.log("[Telegram Auth] Alternative token validation success");
+        }
+      }
+    }
+
     if (!result || !result.user || !result.user.id) {
       console.error("[Telegram Auth] Invalid initData validation result");
       throw httpError(401, "Invalid Telegram initData");

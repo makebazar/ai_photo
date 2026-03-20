@@ -2,7 +2,7 @@
  * Client API - real backend integration
  */
 
-import { getInitData } from "./tg";
+import { getInitData, getCurrentRole } from "./tg";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
@@ -11,9 +11,11 @@ const API_BASE = import.meta.env.VITE_API_BASE || "";
  */
 function getAuthHeaders() {
   const initData = getInitData();
+  const role = getCurrentRole();
   return {
     "Content-Type": "application/json",
     ...(initData ? { "X-Telegram-Init-Data": initData } : {}),
+    "X-Telegram-Preferred-Role": role,
   };
 }
 

@@ -154,6 +154,20 @@ export function getRoleFromStartParam(): "client" | "partner" | null {
 }
 
 /**
+ * Determine current role based on URL path or start_param
+ */
+export function getCurrentRole(): "client" | "partner" | "admin" {
+  const pathname = typeof window !== "undefined" ? window.location.pathname : "";
+  if (pathname.startsWith("/admin")) return "admin";
+  if (pathname.startsWith("/partner")) return "partner";
+  
+  const fromParam = getRoleFromStartParam();
+  if (fromParam) return fromParam as any;
+
+  return "client";
+}
+
+/**
  * Initialize Telegram WebApp
  */
 export function initTelegramWebApp() {
