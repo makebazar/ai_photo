@@ -156,7 +156,7 @@ function LinkCard({ link, onUpdate, onDelete }: LinkCardProps) {
             {/* Link URL */}
             <div className="mt-3 flex items-center gap-2 rounded-xl border border-stroke bg-white/4 p-2">
               <Link size={14} className="shrink-0 text-white/40" />
-              <div className="min-w-0 flex-1 truncate text-xs text-white/70">{link.url}</div>
+              <div className="min-w-0 flex-1 break-all text-xs text-white/70">{link.url}</div>
             </div>
 
             {/* Actions */}
