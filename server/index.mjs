@@ -6,7 +6,7 @@ import path from "node:path";
 import { makePool, withTx } from "./db.mjs";
 import { ensureConfigRow, readConfig } from "./config.mjs";
 import { ensureSeedData } from "./seed.mjs";
-import { allocateCommissionsForOrder, makeReferralCodes, parseReferralCode } from "./mlm.mjs";
+import { allocateCommissionsForOrder, makeReferralCodes, parseReferralCode, resolveReferralCode, trackReferralClick } from "./mlm.mjs";
 import { requireTelegramAuth } from "./auth.mjs";
 import { httpError } from "./http.mjs";
 
@@ -28,13 +28,14 @@ async function upsertUser(db, { tgId, username }) {
 }
 
 async function resolvePartnerByCode(db, code) {
-  const parsed = parseReferralCode(code);
-  if (!parsed) return null;
-  const { kind } = parsed;
+  const result = await resolveReferralCode(db, code);
+  if (!result) return null;
+  
+  const { partnerId, kind } = result;
   const column = kind === "client" ? "client_code" : "team_code";
   const { rows } = await db.query(
-    `select id, public_id, user_id, ${column} as code, status from partners where ${column} = $1`,
-    [code],
+    `select id, public_id, user_id, ${column} as code, status from partners where id = $1`,
+    [partnerId],
   );
   return rows[0] ?? null;
 }
@@ -807,15 +808,19 @@ async function main() {
       }
       
       // Handle client referral attribution
-      if (startParam && (startParam.startsWith("client_") || startParam.startsWith("cl_"))) {
-        const clientCode = startParam;
-        attribution = await ensureClientAttribution(db, { userId: user.id, clientCode });
-      } else if (startParam && !startParam.includes("_")) {
-        // Unknown code format - try as client referral code
-        try {
+      if (startParam) {
+        const result = await resolveReferralCode(db, startParam);
+        if (result && result.kind === "client") {
           attribution = await ensureClientAttribution(db, { userId: user.id, clientCode: startParam });
-        } catch {
-          // Not a valid client code, ignore
+          
+          // Track click automatically if it's a valid referral
+          await trackReferralClick(db, {
+            linkId: result.linkId,
+            partnerId: result.partnerId,
+            kind: "client",
+            code: startParam,
+            userId: user.id,
+          });
         }
       }
 
@@ -1309,9 +1314,20 @@ async function main() {
       const expiresAt = body.expiresAt ? new Date(body.expiresAt) : null;
       const maxUses = body.maxUses ? Math.max(1, Math.round(Number(body.maxUses))) : null;
 
+      // Generate a unique code for this link to distinguish it from the default one
+      const { rows: partnerRows } = await db.query(`select public_id from partners where id = $1`, [partnerId]);
+      const publicId = partnerRows[0].public_id;
+      const codes = makeReferralCodes(publicId);
+      const uniqueCode = kind === 'client' ? codes.clientCode : codes.teamCode;
+
       const { rows } = await db.query(
-        `select * from create_referral_link($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-        [partnerId, kind, name, utmSource, utmMedium, utmCampaign, utmContent, utmTerm, expiresAt, maxUses]
+        `insert into referral_links (
+          partner_id, kind, code, name, description, 
+          utm_source, utm_medium, utm_campaign, utm_content, utm_term, 
+          expires_at, max_uses
+        ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        returning *`,
+        [partnerId, kind, uniqueCode, name, description, utmSource, utmMedium, utmCampaign, utmContent, utmTerm, expiresAt, maxUses]
       );
 
       return rows[0];

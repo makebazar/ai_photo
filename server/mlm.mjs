@@ -86,22 +86,42 @@ export async function resolveReferralCode(db, code, opts = {}) {
   const parsed = parseReferralCode(code);
   if (!parsed) return null;
   
-  // Try to find by code
-  const { rows } = await db.query(
+  // Try to find by code in partners table
+  const { rows: pRows } = await db.query(
     `select id as partner_id, client_code, team_code, status
      from partners
      where (client_code = $1 or team_code = $1) and status = 'active'`,
     [parsed.fullCode || code]
   );
   
-  if (!rows[0]) return null;
-  
-  return {
-    partnerId: rows[0].partner_id,
-    kind: parsed.kind,
-    code: parsed.fullCode || code,
-    linkId: null,
-  };
+  if (pRows[0]) {
+    return {
+      partnerId: pRows[0].partner_id,
+      kind: parsed.kind,
+      code: parsed.fullCode || code,
+      linkId: null,
+    };
+  }
+
+  // Try to find by code in referral_links table
+  const { rows: rlRows } = await db.query(
+    `select rl.partner_id, rl.kind, rl.code, rl.id as link_id, p.status as partner_status
+     from referral_links rl
+     join partners p on p.id = rl.partner_id
+     where rl.code = $1 and rl.status = 'active' and p.status = 'active'`,
+    [parsed.fullCode || code]
+  );
+
+  if (rlRows[0]) {
+    return {
+      partnerId: rlRows[0].partner_id,
+      kind: rlRows[0].kind,
+      code: rlRows[0].code,
+      linkId: rlRows[0].link_id,
+    };
+  }
+
+  return null;
 }
 
 /**
