@@ -524,6 +524,14 @@ function ConfigSettings({ config, onSave }: { config: AdminConfig; onSave: (patc
     });
   };
 
+  const handleCostChange = (field: string, val: string) => {
+    const num = parseInt(val) || 0;
+    setLocal({
+      ...local,
+      costs: { ...local.costs, [field as any]: num }
+    });
+  };
+
   return (
     <div className="grid gap-6">
       <Card className="p-6">
@@ -679,6 +687,30 @@ function ConfigSettings({ config, onSave }: { config: AdminConfig; onSave: (patc
               type="number"
               value={local.commissionsPct.teamL2}
               onChange={(e) => handleCommissionChange("teamL2", e.target.value)}
+              className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonBlue/50"
+            />
+          </div>
+        </div>
+      </Card>
+
+      <Card className="p-6">
+        <h2 className="mb-4 text-lg font-bold text-white">Стоимость в токенах</h2>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div>
+            <label className="text-xs text-white/50">Разблокировка аватара (навсегда)</label>
+            <input
+              type="number"
+              value={local.costs?.avatarTokens || 0}
+              onChange={(e) => handleCostChange("avatarTokens", e.target.value)}
+              className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonBlue/50"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-white/50">Генерация 1 фото</label>
+            <input
+              type="number"
+              value={local.costs?.photoTokens || 0}
+              onChange={(e) => handleCostChange("photoTokens", e.target.value)}
               className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonBlue/50"
             />
           </div>

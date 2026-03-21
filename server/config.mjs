@@ -25,6 +25,10 @@ const DEFAULT_CONFIG = {
   ],
   commissionsPct: { directClient: 30, teamL1: 10, teamL2: 5 },
   payout: { minWithdrawRub: 500, slaText: "Обычно 1–6 часов (анти‑фрод)" },
+  costs: {
+    avatarTokens: 50, // Cost to unlock avatar training/access
+    photoTokens: 1,   // Cost per 1 generated photo
+  },
 };
 
 export function getDefaultConfig() {

@@ -102,6 +102,7 @@ export type ClientProfile = {
     tgId: number;
     username: string | null;
     tokensBalance: number;
+    avatarAccessExpiresAt?: string | null;
   };
   partner: any | null;
   attribution: any | null;

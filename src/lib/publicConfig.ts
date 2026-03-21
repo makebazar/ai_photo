@@ -29,6 +29,10 @@ export type PublicConfig = {
     minWithdrawRub: number;
     slaText: string;
   };
+  costs: {
+    avatarTokens: number;
+    photoTokens: number;
+  };
   packs: any[];
   promos: any[];
 };
@@ -67,6 +71,10 @@ const DEFAULT_PUBLIC_CONFIG: PublicConfig = {
     minWithdrawRub: 5000,
     slaText: "1-3 рабочих дня",
   },
+  costs: {
+    avatarTokens: 50,
+    photoTokens: 1,
+  },
   packs: [],
   promos: [],
 };
@@ -91,6 +99,9 @@ export function loadPublicConfig(): PublicConfig {
     payout: (persisted as any).payout
       ? { ...DEFAULT_PUBLIC_CONFIG.payout, ...(persisted as any).payout }
       : DEFAULT_PUBLIC_CONFIG.payout,
+    costs: (persisted as any).costs
+      ? { ...DEFAULT_PUBLIC_CONFIG.costs, ...(persisted as any).costs }
+      : DEFAULT_PUBLIC_CONFIG.costs,
     packs: Array.isArray((persisted as any).packs) ? ((persisted as any).packs as any) : DEFAULT_PUBLIC_CONFIG.packs,
     promos: Array.isArray((persisted as any).promos) ? ((persisted as any).promos as any) : DEFAULT_PUBLIC_CONFIG.promos,
   };

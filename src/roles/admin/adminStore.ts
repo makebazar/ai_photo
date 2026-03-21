@@ -43,6 +43,7 @@ function createEmptyState(): AdminState {
       ],
       commissionsPct: { directClient: 40, teamL1: 10, teamL2: 5 },
       payout: { minWithdrawRub: 5000, slaText: "1-3 рабочих дня" },
+      costs: { avatarTokens: 50, photoTokens: 1 },
       astriaCostsRub: { standard: 100, pro: 200, monthlyApi: 5000 },
     },
     turnoverRub: 0,

@@ -19,6 +19,19 @@ import { BottomSheet } from "../../components/ui/BottomSheet";
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
 import { PhoneShell } from "../../components/ui/PhoneShell";
+
+const API_BASE = import.meta.env.VITE_API_BASE || "";
+
+/**
+ * Helper to get auth headers for Telegram
+ */
+function getAuthHeaders() {
+  const initData = (window as any).Telegram?.WebApp?.initData || "";
+  return {
+    "Content-Type": "application/json",
+    ...(initData ? { "X-Telegram-Init-Data": initData } : {}),
+  };
+}
 import { Progress } from "../../components/ui/Progress";
 import { SmartImage } from "../../components/ui/SmartImage";
 import { useToast } from "../../components/ui/Toast";
@@ -168,7 +181,7 @@ export function ClientMiniApp() {
     });
   }, [state.avatar, state.dataset, state.order, state.plan, state.sessions, state.training]);
 
-  const [busy, setBusy] = React.useState<null | "pay" | "upload" | "train" | "gen">(null);
+  const [busy, setBusy] = React.useState<null | "pay" | "upload" | "train" | "gen" | "unlock">(null);
   const [uploadProgress, setUploadProgress] = React.useState(0);
   const [lightboxIndex, setLightboxIndex] = React.useState<number | null>(null);
   const [uploadTarget, setUploadTarget] = React.useState<number>(20);
@@ -185,7 +198,11 @@ export function ClientMiniApp() {
     if (!isAuthenticated) return;
     try {
       const profile = await getProfile();
-      dispatch({ type: "set_profile", tokensBalance: profile.user.tokensBalance });
+      dispatch({ 
+        type: "set_profile", 
+        tokensBalance: profile.user.tokensBalance,
+        avatarAccessExpiresAt: profile.user.avatarAccessExpiresAt || null
+      });
     } catch (err) {
       console.error("[Client] Failed to fetch profile:", err);
     }
@@ -194,6 +211,11 @@ export function ClientMiniApp() {
   React.useEffect(() => {
     fetchProfile();
   }, [fetchProfile]);
+
+  const isAvatarActive = React.useMemo(() => {
+    if (!state.avatarAccessExpiresAt) return false;
+    return new Date(state.avatarAccessExpiresAt) > new Date();
+  }, [state.avatarAccessExpiresAt]);
 
   const activeSession = React.useMemo(() => {
     if (!state.activeSessionId) return null;
@@ -249,8 +271,10 @@ export function ClientMiniApp() {
     if (state.training.status !== "idle") return "Продолжить";
     if (state.dataset.uploaded > 0 && state.dataset.uploaded < state.dataset.minRequired)
       return "Продолжить загрузку";
-    if (state.dataset.uploaded >= state.dataset.minRequired && state.training.status === "idle")
+    if (state.dataset.uploaded >= state.dataset.minRequired && state.training.status === "idle") {
+      if (!isAvatarActive) return `Разблокировать (${cfg.costs.avatarTokens} токенов)`;
       return "Перейти к подготовке";
+    }
     return "Продолжить";
   }, [
     state.avatar.status,
@@ -259,6 +283,8 @@ export function ClientMiniApp() {
     state.order?.status,
     state.pendingStyleId,
     state.training.status,
+    isAvatarActive,
+    cfg.costs.avatarTokens,
   ]);
 
   function startNewPhotosession() {
@@ -402,6 +428,53 @@ export function ClientMiniApp() {
     state.view,
   ]);
 
+  async function generateFlow() {
+    if (!isAvatarActive) {
+      toast.push({ 
+        title: "Аватар не активен", 
+        description: `Сначала разблокируйте доступ к аватару за ${cfg.costs.avatarTokens} токенов.`,
+        variant: "danger" 
+      });
+      return;
+    }
+    
+    if (state.tokensBalance < cfg.costs.photoTokens) {
+      toast.push({ 
+        title: "Недостаточно токенов", 
+        description: `Стоимость генерации 1 фото — ${cfg.costs.photoTokens} токенов. Пополните баланс.`,
+        variant: "danger" 
+      });
+      return;
+    }
+
+    try {
+      setBusy("gen");
+      const res = await fetch(`${API_BASE}/api/client/generate`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          styleId: state.pendingStyleId,
+          count: photosPerPlan(state.plan),
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      
+      // Update local tokens immediately
+      dispatch({ 
+        type: "set_profile", 
+        tokensBalance: state.tokensBalance - data.spent,
+        avatarAccessExpiresAt: state.avatarAccessExpiresAt 
+      });
+      
+      go("generating");
+      setBusy(null);
+    } catch (err) {
+      setBusy(null);
+      toast.push({ title: "Ошибка", description: String(err), variant: "danger" });
+    }
+  }
+
   async function payFlow() {
     try {
       setBusy("pay");
@@ -438,6 +511,23 @@ export function ClientMiniApp() {
     } catch (err) {
       setBusy(null);
       toast.push({ title: "Оплата не удалась", description: String(err), variant: "danger" });
+    }
+  }
+
+  async function unlockAvatar() {
+    try {
+      setBusy("unlock");
+      const res = await fetch(`${API_BASE}/api/client/unlock-avatar`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      toast.push({ title: "Аватар разблокирован!", variant: "success" });
+      await fetchProfile();
+    } catch (err) {
+      toast.push({ title: "Ошибка", description: String(err), variant: "danger" });
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -1005,8 +1095,30 @@ export function ClientMiniApp() {
                 </Button>
                 <Button
                   className="flex-1"
+                  onClick={unlockAvatar}
+                  disabled={busy === "unlock" || isAvatarActive}
+                >
+                  {busy === "unlock" ? (
+                    <>
+                      <Loader2 className="animate-spin" size={16} />
+                      Разблокировка…
+                    </>
+                  ) : isAvatarActive ? (
+                    <>
+                      <CheckCircle2 size={16} />
+                      Разблокировано
+                    </>
+                  ) : (
+                    <>
+                      <Lock size={16} />
+                      Разблокировать ({cfg.costs.avatarTokens} токенов)
+                    </>
+                  )}
+                </Button>
+                <Button
+                  className="flex-1"
                   onClick={startTraining}
-                  disabled={state.dataset.uploaded < state.dataset.minRequired || busy === "train"}
+                  disabled={state.dataset.uploaded < state.dataset.minRequired || busy === "train" || !isAvatarActive}
                 >
                   {busy === "train" ? (
                     <>
@@ -1561,8 +1673,8 @@ export function ClientMiniApp() {
                     <ArrowLeft size={16} />
                     Другой стиль
                   </Button>
-                  <Button className="flex-1 whitespace-nowrap" onClick={startGeneratingConfirmedStyle}>
-                    Генерировать
+                  <Button className="flex-1 whitespace-nowrap" onClick={generateFlow}>
+                    Генерировать ({photosPerPlan(state.plan) * cfg.costs.photoTokens} т.)
                     <ArrowRight size={16} />
                   </Button>
                 </div>

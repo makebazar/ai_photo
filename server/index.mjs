@@ -20,7 +20,7 @@ async function upsertUser(db, { tgId, username }) {
     on conflict (tg_id) do update
       set username = excluded.username,
           last_seen_at = now()
-    returning id, tg_id, username, tokens_balance
+    returning id, tg_id, username, tokens_balance, avatar_access_expires_at
     `,
     [tgId ?? null, username ?? null],
   );
@@ -549,6 +549,74 @@ async function main() {
     return { ok: true };
   });
 
+  app.post("/api/client/generate", async (req) => {
+    const userId = req.userId;
+    const b = req.body ?? {};
+    const styleId = b.styleId ? String(b.styleId) : null;
+    const count = Math.max(1, Math.min(50, Number(b.count || 1)));
+    if (!styleId) throw httpError(400, "styleId required");
+
+    const res = await withTx(pool, async (db) => {
+      const cfg = await readConfig(db);
+      const costPerPhoto = cfg.costs?.photoTokens || 1;
+      const totalCost = costPerPhoto * count;
+
+      // 1. Check tokens
+      const { rows: uRows } = await db.query(
+        `select tokens_balance, avatar_access_expires_at from users where id = $1`,
+        [userId]
+      );
+      const user = uRows[0];
+      if (!user) throw httpError(404, "User not found");
+      if (user.tokens_balance < totalCost) throw httpError(403, "Insufficient tokens");
+
+      // 2. Spend tokens
+      await db.query(
+        `update users set tokens_balance = tokens_balance - $2 where id = $1`,
+        [userId, totalCost]
+      );
+
+      // 3. Create session (simplified for now)
+      const { rows: sRows } = await db.query(
+        `insert into style_sessions (user_id, mode, status)
+         values ($1, 'pack', 'queued')
+         returning id`,
+        [userId]
+      );
+
+      return { sessionId: sRows[0].id, spent: totalCost };
+    });
+
+    return { ok: true, ...res };
+  });
+
+  app.post("/api/client/unlock-avatar", async (req) => {
+    const userId = req.userId;
+    const res = await withTx(pool, async (db) => {
+      const cfg = await readConfig(db);
+      const unlockCost = cfg.costs?.avatarTokens || 50;
+
+      const { rows: uRows } = await db.query(
+        `select tokens_balance from users where id = $1`,
+        [userId]
+      );
+      const user = uRows[0];
+      if (!user) throw httpError(404, "User not found");
+      if (user.tokens_balance < unlockCost) throw httpError(403, "Insufficient tokens");
+
+      await db.query(
+        `update users 
+         set tokens_balance = tokens_balance - $2,
+             avatar_access_expires_at = now() + interval '1 year'
+         where id = $1`,
+        [userId, unlockCost]
+      );
+
+      return { unlocked: true, spent: unlockCost };
+    });
+    return { ok: true, ...res };
+  });
+
   app.get("/api/admin/promos", async (req) => {
     requireAdmin(req);
     const rows = await withTx(pool, async (db) => {
@@ -891,6 +959,7 @@ async function main() {
           tgId: user.tg_id,
           username: user.username,
           tokensBalance: user.tokens_balance,
+          avatarAccessExpiresAt: user.avatar_access_expires_at,
         },
         partner: partner ? {
           id: partner.id,

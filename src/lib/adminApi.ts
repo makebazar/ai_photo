@@ -174,6 +174,7 @@ export type AdminConfig = {
   plans: AdminPlan[];
   commissionsPct: { directClient: number; teamL1: number; teamL2: number };
   payout: { minWithdrawRub: number; slaText: string };
+  costs: { avatarTokens: number; photoTokens: number };
 };
 
 export async function getAdminConfig(): Promise<AdminConfig> {
