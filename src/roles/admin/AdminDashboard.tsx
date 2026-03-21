@@ -672,6 +672,15 @@ function ConfigSettings({ config, onSave }: { config: AdminConfig; onSave: (patc
                   <label className="flex cursor-pointer items-center gap-2">
                     <input
                       type="checkbox"
+                      checked={plan.grantsFreeAvatar}
+                      onChange={(e) => handlePlanChange(plan.id, "grantsFreeAvatar", e.target.checked)}
+                      className="h-4 w-4 rounded border-white/10 bg-white/5 text-neonViolet focus:ring-neonViolet/30"
+                    />
+                    <span className="text-xs text-white/70">Бесплатный аватар</span>
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-2">
+                    <input
+                      type="checkbox"
                       checked={plan.featured}
                       onChange={(e) => handlePlanChange(plan.id, "featured", e.target.checked)}
                       className="h-4 w-4 rounded border-white/10 bg-white/5 text-neonBlue focus:ring-neonBlue/30"

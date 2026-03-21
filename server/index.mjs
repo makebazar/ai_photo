@@ -1262,6 +1262,15 @@ async function handleOrderPaid(db, orderId) {
      console.log(`[handleOrderPaid] Order ${orderId} plan '${plan.id}' grants partner status. Ensuring partner for user ${order.user_id}`);
      await ensurePartner(db, { userId: order.user_id });
    }
+
+   // 5. If plan grants free avatar access, unlock it
+   if (plan?.grantsFreeAvatar) {
+     console.log(`[handleOrderPaid] Order ${orderId} plan '${plan.id}' grants free avatar access. Unlocking for user ${order.user_id}`);
+     await db.query(
+       `update users set avatar_access_expires_at = now() + interval '100 years' where id = $1`,
+       [order.user_id]
+     );
+   }
  
    return alloc;
  }

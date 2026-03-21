@@ -14,6 +14,7 @@ export type PublicPlan = {
   featured?: boolean;
   badge?: string;
   grantsPartner: boolean;
+  grantsFreeAvatar?: boolean;
 };
 
 export type PublicGenerationModel = {

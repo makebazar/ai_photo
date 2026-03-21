@@ -670,6 +670,7 @@ export function ClientMiniApp() {
                             <div className="flex items-center gap-2">
                               <span className="text-[13px] font-black text-white">{p.title}</span>
                               {p.badge && <Badge className="text-[8px] h-3.5 px-1 bg-neonViolet/20 text-neonViolet border-neonViolet/30 font-black uppercase leading-none">{p.badge}</Badge>}
+                              {p.grantsFreeAvatar && <Badge className="text-[8px] h-3.5 px-1 bg-green-500/20 text-green-400 border-green-500/30 font-black uppercase leading-none">Free Avatar</Badge>}
                             </div>
                             <div className="text-[10px] font-bold text-white/30 uppercase tracking-widest mt-0.5">{p.tokens} токенов</div>
                           </div>
@@ -730,7 +731,10 @@ export function ClientMiniApp() {
                   <button key={p.id} className={cn("relative overflow-hidden text-left rounded-3xl border p-6 transition-all", state.plan === p.id ? (p.featured ? "border-neonViolet bg-neonViolet/10 shadow-pro" : "border-neonBlue bg-neonBlue/10 shadow-neon") : "border-white/5 bg-white/3")} onClick={() => dispatch({ type: "select_plan", plan: p.id as any })}>
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
-                        <div className="text-lg font-bold text-white mb-1">{p.title}</div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <div className="text-lg font-bold text-white">{p.title}</div>
+                          {p.grantsFreeAvatar && <Badge className="text-[8px] h-3.5 px-1 bg-green-500/20 text-green-400 border-green-500/30 font-black uppercase leading-none">Free Avatar</Badge>}
+                        </div>
                         <div className="text-sm font-medium text-neonBlue mb-4">{p.tokens} токенов</div>
                         <div className="text-xs text-white/40 leading-relaxed">{p.tagline}</div>
                       </div>

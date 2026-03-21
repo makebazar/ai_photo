@@ -168,6 +168,7 @@ export type AdminPlan = {
   featured?: boolean;
   badge?: string;
   grantsPartner: boolean;
+  grantsFreeAvatar?: boolean;
 };
 
 export type GenerationModelConfig = {
