@@ -1,3 +1,6 @@
+-- Fix: Drop view first because we are changing the order and names of columns
+DROP VIEW IF EXISTS partner_stats;
+
 -- Update partner_stats view with more fields
 CREATE OR REPLACE VIEW partner_stats AS
 SELECT 
