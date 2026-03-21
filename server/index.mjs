@@ -602,7 +602,7 @@ async function main() {
 
       if (styleId !== "custom") {
         const { rows: pRows } = await db.query(
-          `select id, title from style_packs where id = $1 or slug = $1`,
+          `select id, title from style_packs where id::text = $1 or slug = $1`,
           [styleId]
         );
         if (pRows[0]) {
