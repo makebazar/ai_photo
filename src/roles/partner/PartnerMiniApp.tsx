@@ -25,7 +25,7 @@ async function copyToClipboard(text: string) {
 export function PartnerMiniApp() {
   const toast = useToast();
   const cfg = usePublicConfig();
-  const planPricesRub = cfg.planPricesRub;
+  const plans = cfg.plans;
   const payoutPolicy = React.useMemo(
     () => ({
       clientDirectPct: cfg.commissionsPct.directClient,
@@ -277,18 +277,14 @@ export function PartnerMiniApp() {
                   Клиент пришёл по ссылке <span className="text-white/75">“Для клиентов”</span> и оплатил.
                 </div>
                 <div className="mt-2 grid gap-1 text-xs text-white/70">
-                  <div className="flex items-center justify-between">
-                    <span>STANDARD {planPricesRub.standard} ₽ → вам ({payoutPolicy.clientDirectPct}%)</span>
-                    <span className="text-white/85">
-                      {rub(Math.round((planPricesRub.standard * payoutPolicy.clientDirectPct) / 100))}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>PRO {planPricesRub.pro} ₽ → вам ({payoutPolicy.clientDirectPct}%)</span>
-                    <span className="text-white/85">
-                      {rub(Math.round((planPricesRub.pro * payoutPolicy.clientDirectPct) / 100))}
-                    </span>
-                  </div>
+                  {plans.map((p) => (
+                    <div key={p.id} className="flex items-center justify-between">
+                      <span>{p.title} {p.priceRub} ₽ → вам ({payoutPolicy.clientDirectPct}%)</span>
+                      <span className="text-white/85">
+                        {rub(Math.round((p.priceRub * payoutPolicy.clientDirectPct) / 100))}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               </div>
 
@@ -304,24 +300,28 @@ export function PartnerMiniApp() {
                         <span>Партнёр 1‑го уровня</span>
                         <span className="text-white/85">{payoutPolicy.teamLevel1Pct}%</span>
                       </div>
-                      <div className="mt-1 flex items-center justify-between text-[11px] text-white/60">
-                        <span>PRO {planPricesRub.pro} ₽ → вам</span>
-                        <span className="text-white/80">
-                          {rub(Math.round((planPricesRub.pro * payoutPolicy.teamLevel1Pct) / 100))}
-                        </span>
-                      </div>
+                      {plans.slice(0, 2).map((p) => (
+                        <div key={p.id} className="mt-1 flex items-center justify-between text-[11px] text-white/60">
+                          <span>{p.title} {p.priceRub} ₽ → вам</span>
+                          <span className="text-white/80">
+                            {rub(Math.round((p.priceRub * payoutPolicy.teamLevel1Pct) / 100))}
+                          </span>
+                        </div>
+                      ))}
                     </div>
                     <div className="rounded-2xl border border-stroke bg-white/3 p-3">
                       <div className="flex items-center justify-between">
                         <span>Партнёр 2‑го уровня</span>
                         <span className="text-white/85">{payoutPolicy.teamLevel2Pct}%</span>
                       </div>
-                      <div className="mt-1 flex items-center justify-between text-[11px] text-white/60">
-                        <span>PRO {planPricesRub.pro} ₽ → вам</span>
-                        <span className="text-white/80">
-                          {rub(Math.round((planPricesRub.pro * payoutPolicy.teamLevel2Pct) / 100))}
-                        </span>
-                      </div>
+                      {plans.slice(0, 2).map((p) => (
+                        <div key={p.id} className="mt-1 flex items-center justify-between text-[11px] text-white/60">
+                          <span>{p.title} {p.priceRub} ₽ → вам</span>
+                          <span className="text-white/80">
+                            {rub(Math.round((p.priceRub * payoutPolicy.teamLevel2Pct) / 100))}
+                          </span>
+                        </div>
+                      ))}
                     </div>
                 </div>
                 <div className="mt-2 text-[11px] text-white/55">

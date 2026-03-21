@@ -388,8 +388,7 @@ export function useAdminStore() {
     persistAdminState(state);
     savePublicConfig({
       updatedAt: Date.now(),
-      planPricesRub: state.config.planPricesRub,
-      planMeta: state.config.planMeta,
+      plans: state.config.plans,
       commissionsPct: state.config.commissionsPct,
       payout: state.config.payout,
       packs: state.packs,

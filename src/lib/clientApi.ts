@@ -19,7 +19,7 @@ function getAuthHeaders() {
   };
 }
 
-export type PlanId = "standard" | "pro";
+export type PlanId = string;
 
 export type Order = {
   id: string;
