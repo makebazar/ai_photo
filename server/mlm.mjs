@@ -273,6 +273,10 @@ export async function allocateCommissionsForOrder(db, orderId) {
     directPartnerId = attrRows?.[0]?.partner_id ?? null;
   }
   
+  if (!directPartnerId) {
+    directPartnerId = cfg.mlm?.ownerPartnerId ?? null;
+  }
+  
   if (!directPartnerId) return { ok: true, commissions: 0 };
 
   // Resolve direct partner status.
@@ -290,15 +294,6 @@ export async function allocateCommissionsForOrder(db, orderId) {
   let actualPartnerId = directPartnerId;
   let uplinePartnerId = directPartner.parent_partner_id ?? cfg.mlm?.ownerPartnerId ?? null;
 
-  // If order.user_id was invited by someone who is NOT yet a partner, 
-  // we could track missed profit here if we knew who that someone was.
-  // In our system, every referral link belongs to a PARTNER.
-  // If a non-partner user shares a link, it's actually their partner's link.
-  
-  // To implement "User misses profit", we need to know if the click was via a user's personal (non-partner) link.
-  // But wait, only partners have links in our current schema. 
-  // Let's assume non-partners can also have "shadow" referral codes or we use their userId.
-
   const partnerPct = cfg.commissionsPct.partner || 20;
   const parentPct = cfg.commissionsPct.parent || 10;
 
@@ -309,7 +304,7 @@ export async function allocateCommissionsForOrder(db, orderId) {
       percent: partnerPct,
       linkId: directLinkId,
     },
-    uplinePartnerId && uplinePartnerId !== actualPartnerId
+    uplinePartnerId
       ? {
           partnerId: uplinePartnerId,
           level: 1,

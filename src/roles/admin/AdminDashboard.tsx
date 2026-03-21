@@ -116,8 +116,8 @@ function MlmSettings({ config, partners, onSave }: { config: AdminConfig; partne
               >
                 <option value="">Не выбран (деньги остаются в системе)</option>
                 {partners.map(p => (
-                  <option key={p.userId} value={p.userId}>
-                    {p.username ? `@${p.username}` : `ID: ${p.partnerId}`} (Владелец)
+                  <option key={p.id} value={p.id}>
+                    {p.username ? `@${p.username}` : `ID: ${p.public_id}`} (Владелец)
                   </option>
                 ))}
               </select>
