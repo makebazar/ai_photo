@@ -9,11 +9,11 @@ const API_BASE = import.meta.env.VITE_API_BASE || "";
 /**
  * Helper to get auth headers for Telegram
  */
-function getAuthHeaders() {
+function getAuthHeaders(includeContentType = true) {
   const initData = getInitData();
   const role = getCurrentRole();
   return {
-    "Content-Type": "application/json",
+    ...(includeContentType ? { "Content-Type": "application/json" } : {}),
     ...(initData ? { "X-Telegram-Init-Data": initData } : {}),
     "X-Telegram-Preferred-Role": role,
   };
@@ -90,6 +90,7 @@ export async function payOrder(orderId: string): Promise<{ paidAt: string }> {
   const res = await fetch(`${API_BASE}/api/orders/${orderId}/mark-paid`, {
     method: "POST",
     headers: getAuthHeaders(),
+    body: JSON.stringify({}),
   });
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
@@ -143,7 +144,7 @@ export async function getAvatarStatus(): Promise<{
   lastTrainedAt?: string;
 }> {
   const res = await fetch(`${API_BASE}/api/client/avatar`, {
-    headers: getAuthHeaders(),
+    headers: getAuthHeaders(false),
   });
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
@@ -154,7 +155,7 @@ export async function getAvatarStatus(): Promise<{
 
 export async function listPacks(): Promise<StylePack[]> {
   const res = await fetch(`${API_BASE}/api/packs`, {
-    headers: getAuthHeaders(),
+    headers: getAuthHeaders(false),
   });
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
@@ -184,7 +185,7 @@ export async function createPhotosession(params: {
 
 export async function getPhotosession(sessionId: string): Promise<PhotoSession & { photos: GeneratedPhoto[] }> {
   const res = await fetch(`${API_BASE}/api/client/photosession/${sessionId}`, {
-    headers: getAuthHeaders(),
+    headers: getAuthHeaders(false),
   });
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
@@ -193,7 +194,7 @@ export async function getPhotosession(sessionId: string): Promise<PhotoSession &
 
 export async function listPhotosessions(): Promise<PhotoSession[]> {
   const res = await fetch(`${API_BASE}/api/client/photosessions`, {
-    headers: getAuthHeaders(),
+    headers: getAuthHeaders(false),
   });
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
@@ -214,7 +215,7 @@ export async function getPublicConfig(): Promise<{
   promos: any[];
 }> {
   const res = await fetch(`${API_BASE}/api/config`, {
-    headers: getAuthHeaders(),
+    headers: getAuthHeaders(false),
   });
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();

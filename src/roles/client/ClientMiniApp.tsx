@@ -27,10 +27,10 @@ const API_BASE = import.meta.env.VITE_API_BASE || "";
 /**
  * Helper to get auth headers for Telegram
  */
-function getAuthHeaders() {
+function getAuthHeaders(includeContentType = true) {
   const initData = (window as any).Telegram?.WebApp?.initData || "";
   return {
-    "Content-Type": "application/json",
+    ...(includeContentType ? { "Content-Type": "application/json" } : {}),
     ...(initData ? { "X-Telegram-Init-Data": initData } : {}),
   };
 }

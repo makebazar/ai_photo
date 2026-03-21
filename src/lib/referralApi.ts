@@ -9,11 +9,11 @@ const API_BASE = import.meta.env.VITE_API_BASE || "";
 /**
  * Helper to get auth headers for Telegram
  */
-function getAuthHeaders() {
+function getAuthHeaders(includeContentType = true) {
   const initData = getInitData();
   const role = getCurrentRole();
   return {
-    "Content-Type": "application/json",
+    ...(includeContentType ? { "Content-Type": "application/json" } : {}),
     ...(initData ? { "X-Telegram-Init-Data": initData } : {}),
     "X-Telegram-Preferred-Role": role,
   };
@@ -96,7 +96,7 @@ export type ClientItem = {
 export async function getReferralLinks(): Promise<ReferralLink[]> {
   const res = await fetch(`${API_BASE}/api/ref/links`, {
     method: "GET",
-    headers: getAuthHeaders(),
+    headers: getAuthHeaders(false),
   });
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
@@ -157,7 +157,7 @@ export async function deleteReferralLink(linkId: string): Promise<void> {
 export async function getPartnerStats(): Promise<PartnerStats> {
   const res = await fetch(`${API_BASE}/api/partner/stats`, {
     method: "GET",
-    headers: getAuthHeaders(),
+    headers: getAuthHeaders(false),
   });
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
@@ -167,7 +167,7 @@ export async function getPartnerStats(): Promise<PartnerStats> {
 export async function getDownline(): Promise<{ level1: DownlinePartner[] }> {
   const res = await fetch(`${API_BASE}/api/partner/downline`, {
     method: "GET",
-    headers: getAuthHeaders(),
+    headers: getAuthHeaders(false),
   });
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
@@ -177,7 +177,7 @@ export async function getDownline(): Promise<{ level1: DownlinePartner[] }> {
 export async function getClients(): Promise<ClientItem[]> {
   const res = await fetch(`${API_BASE}/api/partner/clients`, {
     method: "GET",
-    headers: getAuthHeaders(),
+    headers: getAuthHeaders(false),
   });
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();

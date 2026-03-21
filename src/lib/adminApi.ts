@@ -11,10 +11,11 @@ const ADMIN_TOKEN = import.meta.env.VITE_ADMIN_TOKEN || "";
 async function fetchAdmin<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const initData = getInitData();
   const role = getCurrentRole();
+  const isGet = !options?.method || options.method.toUpperCase() === "GET";
   const res = await fetch(`${API_BASE}${endpoint}`, {
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      ...(!isGet ? { "Content-Type": "application/json" } : {}),
       "X-Admin-Token": ADMIN_TOKEN,
       "X-Admin-Auth": "1", // Debug auth для прототипа
       ...(initData ? { "X-Telegram-Init-Data": initData } : {}),
