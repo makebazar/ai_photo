@@ -224,13 +224,17 @@ export async function markReferralConversion(db, params) {
   const { clickId, orderId, linkId, amountRub, earningsRub } = params;
   
   if (clickId) {
+    // mark_referral_converted is idempotent (sets converted_at if null)
     await db.query(`select * from mark_referral_converted($1, $2)`, [clickId, orderId]);
   }
   
   if (linkId && amountRub != null && earningsRub != null) {
+    // update_link_revenue is now idempotent (recalculates stats for the link)
     await db.query(`select * from update_link_revenue($1, $2, $3, $4)`, [linkId, orderId, amountRub, earningsRub]);
   }
 }
+
+
 
 export async function allocateCommissionsForOrder(db, orderId) {
   // Idempotent: commissions have a unique constraint (order_id, partner_id, level).
