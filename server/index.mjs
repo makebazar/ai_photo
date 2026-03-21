@@ -568,6 +568,10 @@ async function main() {
     const styleId = b.styleId ? String(b.styleId) : null;
     const modelId = b.modelId ? String(b.modelId) : null;
     const count = Math.max(1, Math.min(50, Number(b.count || 1)));
+    const prompt = b.prompt ? String(b.prompt) : null;
+    const negative = b.negative ? String(b.negative) : null;
+    const aspectRatio = b.aspectRatio ? String(b.aspectRatio) : null;
+
     if (!styleId) throw httpError(400, "styleId required");
 
     const res = await withTx(pool, async (db) => {
@@ -591,12 +595,28 @@ async function main() {
         [user.id, totalCost]
       );
 
-      // 3. Create session (simplified for now)
+      // 3. Create session
+      let title = "Custom";
+      let mode = "custom";
+      let packId = null;
+
+      if (styleId !== "custom") {
+        const { rows: pRows } = await db.query(
+          `select id, title from style_packs where id = $1 or slug = $1`,
+          [styleId]
+        );
+        if (pRows[0]) {
+          title = pRows[0].title;
+          mode = "pack";
+          packId = pRows[0].id;
+        }
+      }
+
       const { rows: sRows } = await db.query(
-        `insert into style_sessions (user_id, mode, status)
-         values ($1, 'pack', 'queued')
+        `insert into photo_sessions (user_id, mode, pack_id, title, prompt, negative, settings, status)
+         values ($1, $2, $3, $4, $5, $6, $7::jsonb, 'queued')
          returning id`,
-        [user.id]
+        [user.id, mode, packId, title, prompt, negative, JSON.stringify({ count, modelId, aspectRatio })]
       );
 
       return { sessionId: sRows[0].id, spent: totalCost };

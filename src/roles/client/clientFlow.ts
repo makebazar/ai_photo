@@ -149,11 +149,11 @@ export type ClientAction =
   | { type: "training_progress"; progress: number; etaMinutes: number }
   | { type: "training_ready" }
   | { type: "style_picked"; styleId: string }
+  | { type: "select_count"; count: number }
   | {
       type: "custom_update";
       prompt: string;
       negative: string;
-      count: number;
       aspect: PromptAspectRatio;
       enhance: boolean;
     }
@@ -264,14 +264,14 @@ export function clientReducer(state: ClientState, action: ClientAction): ClientS
       };
     case "style_picked":
       return { ...state, pendingStyleId: action.styleId };
+    case "select_count":
+      return { ...state, pendingCustomCount: action.count };
     case "custom_update":
       return {
         ...state,
         pendingStyleId: "custom",
         pendingCustomPrompt: action.prompt,
         pendingCustomNegative: action.negative,
-        // Count is locked by the chosen tariff.
-        pendingCustomCount: photosPerPlan(state.plan),
         pendingCustomAspect: action.aspect,
         pendingEnhance: action.enhance,
       };

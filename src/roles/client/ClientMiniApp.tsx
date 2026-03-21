@@ -368,7 +368,7 @@ export function ClientMiniApp() {
     async function maybeFinish() {
       if (state.view !== "generating" || state.generating.status !== "generating" || state.generating.progress < 100 || busy) return;
       setBusy("gen");
-      const photos: MockPhoto[] = Array.from({ length: 20 }).map((_, i) => ({
+      const photos: MockPhoto[] = Array.from({ length: state.pendingCustomCount }).map((_, i) => ({
         id: `photo_${Date.now()}_${i}`,
         url: `https://via.placeholder.com/512x512?text=Photo+${i + 1}`,
         label: `Photo ${i + 1}`,
@@ -380,15 +380,12 @@ export function ClientMiniApp() {
         styleTitle: state.pendingStyleId === "custom" ? "Свой стиль" : pendingPack?.title ?? "Пакет",
         styleMode: state.pendingStyleId === "custom" ? "custom" : "pack",
         prompt: state.pendingStyleId === "custom" ? state.pendingCustomPrompt : undefined,
-        settings: state.pendingStyleId === "custom" ? {
+        settings: {
           count: state.pendingCustomCount,
-          aspectRatio: state.pendingCustomAspect,
+          aspectRatio: state.pendingStyleId === "custom" ? state.pendingCustomAspect : undefined,
           enhance: state.pendingEnhance,
-          steps: state.pendingCustomSteps,
-          faceFix: state.pendingCustomFaceFix,
-        } : {
-          count: 20,
-          enhance: state.pendingEnhance,
+          steps: state.pendingStyleId === "custom" ? state.pendingCustomSteps : undefined,
+          faceFix: state.pendingStyleId === "custom" ? state.pendingCustomFaceFix : undefined,
         },
         createdAt: Date.now(),
         photos,
@@ -406,7 +403,8 @@ export function ClientMiniApp() {
       toast.push({ title: "Аватар не активен", description: `Разблокируйте доступ за ${cfg.costs.avatarTokens} т.`, variant: "danger" });
       return;
     }
-    if (state.tokensBalance < costPerPhoto) {
+    const totalCost = state.pendingCustomCount * costPerPhoto;
+    if (state.tokensBalance < totalCost) {
       toast.push({ title: "Недостаточно токенов", variant: "danger" });
       return;
     }
@@ -415,7 +413,14 @@ export function ClientMiniApp() {
       const res = await fetch(`${API_BASE}/api/client/generate`, {
         method: "POST",
         headers: getAuthHeaders(),
-        body: JSON.stringify({ styleId: state.pendingStyleId, modelId: state.pendingModelId, count: 20 }),
+        body: JSON.stringify({ 
+          styleId: state.pendingStyleId, 
+          modelId: state.pendingModelId, 
+          count: state.pendingCustomCount,
+          prompt: state.pendingStyleId === "custom" ? state.pendingCustomPrompt : undefined,
+          negative: state.pendingStyleId === "custom" ? state.pendingCustomNegative : undefined,
+          aspectRatio: state.pendingStyleId === "custom" ? state.pendingCustomAspect : undefined,
+        }),
       });
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
@@ -875,6 +880,22 @@ export function ClientMiniApp() {
                 <Button variant="secondary" size="sm" onClick={goHome} className="h-9 px-3 border-white/5 bg-white/5"><ArrowLeft size={16} className="mr-1" />Назад</Button>
               </div>
               <div className="grid grid-cols-2 gap-4">
+                <button 
+                  onClick={() => go("style_custom")} 
+                  className="group text-left active:scale-[0.98] transition-transform"
+                >
+                  <div className="relative aspect-[3/4] rounded-3xl overflow-hidden border border-dashed border-neonViolet/40 bg-neonViolet/5 group-hover:border-neonViolet transition-all shadow-lg group-hover:shadow-pro/20 flex flex-col items-center justify-center p-6 text-center">
+                    <div className="h-14 w-14 rounded-2xl bg-neonViolet/10 border border-neonViolet/20 flex items-center justify-center text-neonViolet mb-4 group-hover:scale-110 transition-transform">
+                      <Sparkles size={32} />
+                    </div>
+                    <div className="text-sm font-black text-white leading-tight">Свой стиль</div>
+                    <div className="text-[10px] font-bold text-white/40 mt-2 uppercase tracking-tighter">Напишите промт сами</div>
+                    <div className="absolute top-3 right-3 h-7 w-7 rounded-full bg-black/40 backdrop-blur-md border border-white/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all">
+                      <ArrowRight size={14} className="text-white" />
+                    </div>
+                  </div>
+                </button>
+
                 {packs.map(p => (
                   <button 
                     key={p.id} 
@@ -902,6 +923,71 @@ export function ClientMiniApp() {
                   </button>
                 ))}
               </div>
+            </motion.div>
+          )}
+
+          {state.view === "style_custom" && (
+            <motion.div key="style_custom" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-black text-white leading-tight">Свой стиль</h2>
+                  <p className="text-xs text-white/40 mt-1 uppercase tracking-widest font-bold">Опишите желаемое фото</p>
+                </div>
+                <Button variant="secondary" size="sm" onClick={() => go("style_list")} className="h-9 px-3 border-white/5 bg-white/5"><ArrowLeft size={16} className="mr-1" />Назад</Button>
+              </div>
+
+              <Card className="p-6 space-y-6">
+                <div className="space-y-4">
+                  <SectionHeader title="Промт (Описание)" right="Что на фото?" />
+                  <textarea 
+                    className="w-full h-32 bg-white/5 border border-white/10 rounded-2xl p-4 text-sm text-white placeholder:text-white/20 focus:border-neonViolet transition-colors outline-none resize-none"
+                    placeholder="Пример: мужчина в деловом костюме, на фоне современного офиса, профессиональное освещение, 8k..."
+                    value={state.pendingCustomPrompt}
+                    onChange={(e) => dispatch({ type: "custom_update", prompt: e.target.value, negative: state.pendingCustomNegative, aspect: state.pendingCustomAspect, enhance: state.pendingEnhance })}
+                  />
+                </div>
+
+                <div className="space-y-4">
+                  <SectionHeader title="Отрицательный промт" right="Чего быть не должно?" />
+                  <textarea 
+                    className="w-full h-20 bg-white/5 border border-white/10 rounded-2xl p-4 text-sm text-white placeholder:text-white/20 focus:border-neonViolet transition-colors outline-none resize-none"
+                    placeholder="Пример: очки, борода, головной убор..."
+                    value={state.pendingCustomNegative}
+                    onChange={(e) => dispatch({ type: "custom_update", prompt: state.pendingCustomPrompt, negative: e.target.value, aspect: state.pendingCustomAspect, enhance: state.pendingEnhance })}
+                  />
+                </div>
+
+                <div className="space-y-4">
+                  <SectionHeader title="Формат фото" />
+                  <div className="grid grid-cols-3 gap-2">
+                    {ASPECT_OPTIONS.map(opt => (
+                      <button 
+                        key={opt.value} 
+                        onClick={() => dispatch({ type: "custom_update", prompt: state.pendingCustomPrompt, negative: state.pendingCustomNegative, aspect: opt.value, enhance: state.pendingEnhance })}
+                        className={cn(
+                          "py-3 rounded-xl border text-[10px] font-black uppercase tracking-tighter transition-all",
+                          state.pendingCustomAspect === opt.value ? "border-neonViolet bg-neonViolet/10 text-neonViolet" : "border-white/5 bg-white/3 text-white/40"
+                        )}
+                      >
+                        {opt.value}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <Button 
+                  className="w-full py-6 text-lg font-black shadow-pro bg-neonViolet hover:bg-neonViolet/90 transition-all active:scale-[0.98]" 
+                  onClick={() => {
+                    if (!state.pendingCustomPrompt.trim()) {
+                      toast.push({ title: "Введите промт", variant: "danger" });
+                      return;
+                    }
+                    go("style_confirm");
+                  }}
+                >
+                  Продолжить <ArrowRight size={20} className="ml-2" />
+                </Button>
+              </Card>
             </motion.div>
           )}
 
@@ -954,6 +1040,27 @@ export function ClientMiniApp() {
                     </div>
                   </div>
 
+                  <div className="space-y-4">
+                    <SectionHeader title="Количество фото" right="Выберите пакет" />
+                    <div className="grid grid-cols-3 gap-3">
+                      {[8, 20, 50].map(count => (
+                        <button 
+                          key={count} 
+                          onClick={() => dispatch({ type: "select_count", count })} 
+                          className={cn(
+                            "py-3 rounded-2xl border transition-all active:scale-[0.98] flex flex-col items-center justify-center",
+                            state.pendingCustomCount === count 
+                              ? "border-neonViolet bg-neonViolet/10 text-neonViolet shadow-[0_0_15px_rgba(139,92,246,0.1)]" 
+                              : "border-white/5 bg-white/3 hover:bg-white/5 hover:border-white/10"
+                          )}
+                        >
+                          <div className="text-sm font-black tracking-tight">{count}</div>
+                          <div className="text-[8px] font-bold text-white/30 uppercase tracking-widest">фото</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   <div className="bg-white/3 rounded-2xl p-4 border border-white/5 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div className="h-10 w-10 rounded-xl bg-neonViolet/10 border border-neonViolet/20 flex items-center justify-center text-neonViolet">
@@ -961,11 +1068,11 @@ export function ClientMiniApp() {
                       </div>
                       <div>
                         <div className="text-[11px] font-black text-white uppercase tracking-tight">Итоговая стоимость</div>
-                        <div className="text-[10px] font-bold text-white/30 uppercase tracking-widest mt-0.5">20 фотографий</div>
+                        <div className="text-[10px] font-bold text-white/30 uppercase tracking-widest mt-0.5">{state.pendingCustomCount} фотографий</div>
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="text-lg font-black text-white">{20 * costPerPhoto} <span className="text-[10px] text-white/40 ml-0.5 font-bold uppercase">токенов</span></div>
+                      <div className="text-lg font-black text-white">{state.pendingCustomCount * costPerPhoto} <span className="text-[10px] text-white/40 ml-0.5 font-bold uppercase">токенов</span></div>
                     </div>
                   </div>
 
@@ -1002,7 +1109,7 @@ export function ClientMiniApp() {
               <div className="space-y-4 max-w-[280px]">
                 <h2 className="text-3xl font-black text-white tracking-tight">Создаем шедевр</h2>
                 <p className="text-sm text-white/50 leading-relaxed">
-                  Генерируем {20} уникальных портретов в выбранном стиле. Осталось около <span className="text-neonViolet font-bold">{state.generating.etaSeconds} сек.</span>
+                  Генерируем {state.pendingCustomCount} уникальных портретов в выбранном стиле. Осталось около <span className="text-neonViolet font-bold">{state.generating.etaSeconds} сек.</span>
                 </p>
               </div>
 
