@@ -23,12 +23,12 @@ BEGIN
       WHERE partner_id = p_partner_id AND status = 'available'
     ) - (
       SELECT COALESCE(SUM(amount_rub), 0)
-      FROM withdrawals
-      WHERE partner_id = p_partner_id AND status IN ('pending', 'paid')
+      FROM withdrawal_requests
+      WHERE partner_id = p_partner_id AND status IN ('pending', 'approved', 'paid')
     ),
     paid_out_rub = (
       SELECT COALESCE(SUM(amount_rub), 0)
-      FROM withdrawals
+      FROM withdrawal_requests
       WHERE partner_id = p_partner_id AND status = 'paid'
     ),
     updated_at = now()
