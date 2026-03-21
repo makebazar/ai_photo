@@ -322,6 +322,7 @@ export function ClientMiniApp() {
       const res = await fetch(`${API_BASE}/api/client/unlock-avatar`, {
         method: "POST",
         headers: getAuthHeaders(),
+        body: JSON.stringify({}),
       });
       if (!res.ok) throw new Error(await res.text());
       
@@ -565,6 +566,7 @@ export function ClientMiniApp() {
       const res = await fetch(`${API_BASE}/api/client/unlock-avatar`, {
         method: "POST",
         headers: getAuthHeaders(),
+        body: JSON.stringify({}),
       });
       if (!res.ok) throw new Error(await res.text());
       toast.push({ title: "Аватар разблокирован!", variant: "success" });
@@ -767,6 +769,7 @@ export function ClientMiniApp() {
                           const res = await fetch(`${API_BASE}/api/client/delete-avatar`, {
                             method: "POST",
                             headers: getAuthHeaders(),
+                            body: JSON.stringify({}),
                           });
                           if (!res.ok) throw new Error(await res.text());
                           dispatch({ type: "delete_avatar" });
