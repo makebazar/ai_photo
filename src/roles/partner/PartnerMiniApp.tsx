@@ -42,7 +42,6 @@ export function PartnerMiniApp() {
   const [viewerOpen, setViewerOpen] = React.useState(false);
   const [viewerIndex, setViewerIndex] = React.useState(0);
   const [viewerItems, setViewerItems] = React.useState<MediaItem[]>([]);
-  const [refTab, setRefTab] = React.useState<"clients" | "team">("clients");
 
   // Telegram auth
   const { isAuthenticated, user, partner, isLoading: authLoading, login } = useTelegramAuth();
@@ -350,73 +349,28 @@ export function PartnerMiniApp() {
             </div>
           </details>
 
+          {/* Navigation to Ref Links */}
           <Card className="p-4">
-            <div className="flex items-end justify-between gap-3">
-              <div className="text-sm font-semibold text-white/90">Ссылки</div>
-              <div className="inline-flex rounded-2xl border border-stroke bg-white/3 p-1">
-              <button
-                className={cn(
-                  "rounded-xl px-3 py-1.5 text-xs font-semibold transition",
-                  refTab === "clients"
-                    ? "bg-white/8 text-white/90"
-                    : "text-white/60 hover:text-white/80",
-                )}
-                onClick={() => setRefTab("clients")}
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-white/90">Реферальные ссылки</div>
+                <div className="mt-1 text-xs text-white/60">
+                  Создавайте ссылки с UTM-метками для разных каналов
+                </div>
+              </div>
+              <Button
+                size="sm"
+                variant="secondary"
+                className="shrink-0 whitespace-nowrap"
+                onClick={() => setView("ref")}
               >
-                Для клиентов
-              </button>
-              <button
-                className={cn(
-                  "rounded-xl px-3 py-1.5 text-xs font-semibold transition",
-                  refTab === "team"
-                    ? "bg-white/8 text-white/90"
-                    : "text-white/60 hover:text-white/80",
-                )}
-                onClick={() => setRefTab("team")}
-              >
-                Для команды
-              </button>
+                <Link size={16} />
+                Открыть
+              </Button>
             </div>
-          </div>
+          </Card>
 
-          <div className="mt-2 flex gap-2">
-            <div className="flex-1 rounded-xl border border-stroke bg-white/4 px-3 py-2 text-sm text-white/85">
-              {refTab === "clients"
-                ? `https://t.me/ai_photo_testast_bot?start=client_${stats?.public_id || '...'}`
-                : `https://t.me/ai_photo_testast_partner_bot?start=team_${stats?.public_id || '...'}`
-              }
-            </div>
-            <Button
-              variant="secondary"
-              className="whitespace-nowrap"
-              onClick={async () => {
-                const link = refTab === "clients"
-                  ? `https://t.me/ai_photo_testast_bot?start=client_${stats?.public_id || '...'}`
-                  : `https://t.me/ai_photo_testast_partner_bot?start=team_${stats?.public_id || '...'}`;
-                try {
-                  await copyToClipboard(link);
-                  toast.push({ title: "Скопировано", description: "Ссылка в буфере обмена.", variant: "success" });
-                } catch {
-                  toast.push({
-                    title: "Не удалось скопировать",
-                    description: "Браузер запретил доступ к буферу.",
-                    variant: "danger",
-                  });
-                }
-              }}
-            >
-              <Copy size={16} />
-              Скопировать
-            </Button>
-          </div>
-          <div className="mt-2 text-xs text-white/55">
-            {refTab === "clients"
-              ? "Эта ссылка ведёт в фотосессию. Вы получаете % с оплат."
-              : "Эта ссылка приглашает партнёров в вашу команду (MLM). Вы получаете % с их оборота."}
-          </div>
-        </Card>
-
-        <div className="space-y-3">
+          <div className="space-y-3">
           <div className="text-sm font-semibold text-white/90">Промо‑материалы</div>
           <div className="grid gap-2">
             {textPromos.map((p) => (
@@ -506,27 +460,6 @@ export function PartnerMiniApp() {
             ))}
           </div>
         </div>
-
-        {/* Navigation to Ref Links */}
-        <Card className="p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="text-sm font-semibold text-white/90">Реферальные ссылки</div>
-              <div className="mt-1 text-xs text-white/60">
-                Создавайте ссылки с UTM-метками для разных каналов
-              </div>
-            </div>
-            <Button
-              size="sm"
-              variant="secondary"
-              className="shrink-0 whitespace-nowrap"
-              onClick={() => setView("ref")}
-            >
-              <Link size={16} />
-              Открыть
-            </Button>
-          </div>
-        </Card>
       </div>
       ) : view === "ref" ? (
         <div className="space-y-5">
