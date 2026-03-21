@@ -11,6 +11,8 @@ import {
   LogOut,
   Lock,
   Trash2,
+  Settings,
+  Save,
 } from "lucide-react";
 import * as React from "react";
 import { Badge } from "../../components/ui/Badge";
@@ -22,9 +24,10 @@ import { useAdminStore, type AdminAction } from "./adminStore";
 import {
   getUsers, getOrders, getPartners, getWithdrawals,
   getAdminConfig, getPacks, getPromos, getSessions,
-  deleteUser, adjustUserTokens,
+  deleteUser, adjustUserTokens, updateAdminConfig,
   type AdminPack as ApiAdminPack,
   type AdminPromo as ApiAdminPromo,
+  type AdminConfig,
 } from "../../lib/adminApi";
 
 const ADMIN_PASSWORD = "admin123"; // Простой пароль для прототипа
@@ -34,7 +37,7 @@ export function AdminDashboard() {
   const toast = useToast();
   const { state, dispatch } = useAdminStore();
   const [loading, setLoading] = React.useState(false);
-  const [nav, setNav] = React.useState<"overview" | "users" | "orders" | "partners" | "withdrawals" | "packs" | "promos">("overview");
+  const [nav, setNav] = React.useState<"overview" | "users" | "orders" | "partners" | "withdrawals" | "packs" | "promos" | "settings">("overview");
   const [isAuthenticated, setIsAuthenticated] = React.useState(() => {
     if (typeof window === "undefined") return false;
     return localStorage.getItem(LS_AUTH_KEY) === "1";
@@ -329,6 +332,7 @@ export function AdminDashboard() {
             <NavButton active={nav === "withdrawals"} onClick={() => setNav("withdrawals")} icon={<ShieldAlert size={16} />} label={`Вывод (${state.withdrawals.length})`} />
             <NavButton active={nav === "packs"} onClick={() => setNav("packs")} icon={<Package size={16} />} label={`Паки (${state.packs.length})`} />
             <NavButton active={nav === "promos"} onClick={() => setNav("promos")} icon={<Megaphone size={16} />} label={`Промо (${state.promos.length})`} />
+            <NavButton active={nav === "settings"} onClick={() => setNav("settings")} icon={<Settings size={16} />} label="Настройки" />
           </div>
         </Card>
 
@@ -340,6 +344,18 @@ export function AdminDashboard() {
         {nav === "withdrawals" && <WithdrawalsList withdrawals={state.withdrawals} />}
         {nav === "packs" && <PacksList packs={state.packs} />}
         {nav === "promos" && <PromosList promos={state.promos} />}
+        {nav === "settings" && <ConfigSettings config={state.config} onSave={(patch) => {
+          setLoading(true);
+          updateAdminConfig(patch)
+            .then((newConfig) => {
+              dispatch({ type: "config_update", patch: newConfig });
+              toast.push({ title: "Настройки сохранены", variant: "success" });
+            })
+            .catch((err) => {
+              toast.push({ title: "Ошибка", description: String(err), variant: "danger" });
+            })
+            .finally(() => setLoading(false));
+        }} />}
       </div>
     </div>
   );
@@ -447,6 +463,188 @@ function UsersList({ users, onDelete, onAdjustTokens }: { users: any[]; onDelete
         </table>
       </div>
     </Card>
+  );
+}
+
+function ConfigSettings({ config, onSave }: { config: AdminConfig; onSave: (patch: Partial<AdminConfig>) => void }) {
+  const [local, setLocal] = React.useState<AdminConfig>(config);
+
+  React.useEffect(() => {
+    setLocal(config);
+  }, [config]);
+
+  const handlePriceChange = (plan: "standard" | "pro", val: string) => {
+    const num = parseInt(val) || 0;
+    setLocal({
+      ...local,
+      planPricesRub: { ...local.planPricesRub, [plan]: num }
+    });
+  };
+
+  const handleMetaChange = (plan: "standard" | "pro", field: "title" | "badge", val: string) => {
+    setLocal({
+      ...local,
+      planMeta: {
+        ...local.planMeta,
+        [plan]: { ...local.planMeta[plan], [field]: val }
+      }
+    });
+  };
+
+  const handleCommissionChange = (field: string, val: string) => {
+    const num = parseFloat(val) || 0;
+    setLocal({
+      ...local,
+      commissionsPct: { ...local.commissionsPct, [field]: num }
+    });
+  };
+
+  const handlePayoutChange = (field: string, val: any) => {
+    setLocal({
+      ...local,
+      payout: { ...local.payout, [field]: field === "minWithdrawRub" ? parseInt(val) || 0 : val }
+    });
+  };
+
+  return (
+    <div className="grid gap-6">
+      <Card className="p-6">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-white">Тарифы и цены</h2>
+          <Button onClick={() => onSave(local)}>
+            <Save size={16} className="mr-2" />
+            Сохранить всё
+          </Button>
+        </div>
+
+        <div className="grid gap-6 md:grid-cols-2">
+          {/* Standard Plan */}
+          <div className="space-y-4 rounded-xl border border-white/5 bg-white/2 p-4">
+            <h3 className="text-sm font-semibold text-neonBlue">Тариф: Standard</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-white/50">Название в UI</label>
+                <input
+                  type="text"
+                  value={local.planMeta.standard.title}
+                  onChange={(e) => handleMetaChange("standard", "title", e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonBlue/50"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-white/50">Цена (₽)</label>
+                <input
+                  type="number"
+                  value={local.planPricesRub.standard}
+                  onChange={(e) => handlePriceChange("standard", e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonBlue/50"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-white/50">Бейдж (опционально)</label>
+                <input
+                  type="text"
+                  value={local.planMeta.standard.badge || ""}
+                  onChange={(e) => handleMetaChange("standard", "badge", e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonBlue/50"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Pro Plan */}
+          <div className="space-y-4 rounded-xl border border-white/5 bg-white/2 p-4">
+            <h3 className="text-sm font-semibold text-neonViolet">Тариф: PRO</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-white/50">Название в UI</label>
+                <input
+                  type="text"
+                  value={local.planMeta.pro.title}
+                  onChange={(e) => handleMetaChange("pro", "title", e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonViolet/50"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-white/50">Цена (₽)</label>
+                <input
+                  type="number"
+                  value={local.planPricesRub.pro}
+                  onChange={(e) => handlePriceChange("pro", e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonViolet/50"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-white/50">Бейдж (опционально)</label>
+                <input
+                  type="text"
+                  value={local.planMeta.pro.badge || ""}
+                  onChange={(e) => handleMetaChange("pro", "badge", e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonViolet/50"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      <Card className="p-6">
+        <h2 className="mb-4 text-lg font-bold text-white">Партнерская программа (%)</h2>
+        <div className="grid gap-4 md:grid-cols-3">
+          <div>
+            <label className="text-xs text-white/50">Прямой клиент (L0)</label>
+            <input
+              type="number"
+              value={local.commissionsPct.directClient}
+              onChange={(e) => handleCommissionChange("directClient", e.target.value)}
+              className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonBlue/50"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-white/50">Команда L1</label>
+            <input
+              type="number"
+              value={local.commissionsPct.teamL1}
+              onChange={(e) => handleCommissionChange("teamL1", e.target.value)}
+              className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonBlue/50"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-white/50">Команда L2</label>
+            <input
+              type="number"
+              value={local.commissionsPct.teamL2}
+              onChange={(e) => handleCommissionChange("teamL2", e.target.value)}
+              className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonBlue/50"
+            />
+          </div>
+        </div>
+      </Card>
+
+      <Card className="p-6">
+        <h2 className="mb-4 text-lg font-bold text-white">Выплаты</h2>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div>
+            <label className="text-xs text-white/50">Минимум для вывода (₽)</label>
+            <input
+              type="number"
+              value={local.payout.minWithdrawRub}
+              onChange={(e) => handlePayoutChange("minWithdrawRub", e.target.value)}
+              className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonBlue/50"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-white/50">Текст о сроках выплаты</label>
+            <input
+              type="text"
+              value={local.payout.slaText}
+              onChange={(e) => handlePayoutChange("slaText", e.target.value)}
+              className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonBlue/50"
+            />
+          </div>
+        </div>
+      </Card>
+    </div>
   );
 }
 
