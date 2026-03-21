@@ -9,9 +9,8 @@ export type MockPhoto = {
 };
 
 export function photosPerPlan(planId: PlanId) {
-  const cfg = loadPublicConfig();
-  const plan = cfg.plans.find(p => p.id === planId);
-  return plan?.photosCount || 20;
+  // Now fixed to 20 per session as we use tokens for payment
+  return 20;
 }
 
 export type Order = {
