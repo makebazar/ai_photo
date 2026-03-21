@@ -14,6 +14,8 @@ import {
   UploadCloud,
   UserCheck,
   UserX,
+  Save,
+  Clock,
 } from "lucide-react";
 import * as React from "react";
 import { Badge } from "../../components/ui/Badge";
@@ -72,15 +74,10 @@ function formatDate(ts: number) {
   });
 }
 
-// Placeholder for showcase photos (will be loaded from API)
+// Placeholder for showcase photos
 const SHOWCASE_PHOTOS: Array<{ id: string; url: string; label: string }> = [];
 
 const LS_KEY = "ai_photo_client_state_v3";
-
-function clampIndex(i: number, len: number) {
-  if (len <= 0) return 0;
-  return ((i % len) + len) % len;
-}
 
 const ASPECT_OPTIONS: Array<{
   value: PromptAspectRatio;
@@ -102,9 +99,9 @@ function SectionHeader({
   right?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-end justify-between gap-3">
-      <div className="text-sm font-semibold text-white/90">{title}</div>
-      {right ? <div className="text-xs text-white/60">{right}</div> : null}
+    <div className="flex items-center justify-between gap-3">
+      <div className="text-sm font-bold text-white/90 uppercase tracking-tight">{title}</div>
+      {right ? <div className="text-[10px] font-medium text-white/40 uppercase tracking-wider">{right}</div> : null}
     </div>
   );
 }
@@ -119,10 +116,10 @@ function Pill({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px]",
-        tone === "neutral" && "border-stroke bg-white/4 text-white/70",
-        tone === "good" && "border-neonBlue/30 bg-neonBlue/10 text-white/85",
-        tone === "brand" && "border-neonViolet/30 bg-neonViolet/10 text-white/85",
+        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium",
+        tone === "neutral" && "border-white/10 bg-white/5 text-white/60",
+        tone === "good" && "border-neonBlue/30 bg-neonBlue/10 text-neonBlue",
+        tone === "brand" && "border-neonViolet/30 bg-neonViolet/10 text-neonViolet",
       )}
     >
       {children}
@@ -149,7 +146,6 @@ export function ClientMiniApp() {
       ...initialClientState.dataset,
       ...(persisted.dataset ?? {}),
     };
-    // Migration: previously maxAllowed was 12; bump to current config (30).
     if (dataset.maxAllowed < initialClientState.dataset.maxAllowed) {
       dataset.maxAllowed = initialClientState.dataset.maxAllowed;
     }
@@ -193,18 +189,15 @@ export function ClientMiniApp() {
   const [packsLoading, setPacksLoading] = React.useState(true);
   const [aspectSheetOpen, setAspectSheetOpen] = React.useState(false);
 
-  // Telegram auth
   const { isAuthenticated, user, isLoading: authLoading } = useTelegramAuth();
 
   const fetchProfile = React.useCallback(async () => {
-    // 1. Fetch public config first to ensure prices are fresh
     try {
       await fetchPublicConfig();
     } catch (err) {
       console.error("[Client] Failed to fetch public config:", err);
     }
 
-    // 2. Fetch user profile if authenticated
     if (!isAuthenticated) return;
     try {
       const profile = await getProfile();
@@ -275,36 +268,6 @@ export function ClientMiniApp() {
     go("home");
   }, [dispatch, state.generating.status, state.view, toast, go]);
 
-  const resumeView = React.useMemo<ClientView>(() => {
-    if (state.order?.status === "paid" && state.pendingStyleId) return "style_confirm";
-    if (state.order?.status === "paid" && state.avatar.status === "ready") return "style_list";
-    if (state.training.status !== "idle") return "training";
-    if (state.order?.status === "paid") return "upload";
-    return "pay";
-  }, [state.avatar.status, state.order?.status, state.pendingStyleId, state.training.status]);
-
-  const resumeLabel = React.useMemo(() => {
-    if (state.order?.status === "paid" && state.pendingStyleId) return "Продолжить";
-    if (state.avatar.status === "ready") return "Выбрать стиль";
-    if (state.training.status !== "idle") return "Продолжить";
-    if (state.dataset.uploaded > 0 && state.dataset.uploaded < state.dataset.minRequired)
-      return "Продолжить загрузку";
-    if (state.dataset.uploaded >= state.dataset.minRequired && state.training.status === "idle") {
-      if (!isAvatarActive) return `Разблокировать (${cfg.costs.avatarTokens} токенов)`;
-      return "Перейти к подготовке";
-    }
-    return "Продолжить";
-  }, [
-    state.avatar.status,
-    state.dataset.minRequired,
-    state.dataset.uploaded,
-    state.order?.status,
-    state.pendingStyleId,
-    state.training.status,
-    isAvatarActive,
-    cfg.costs.avatarTokens,
-  ]);
-
   function startNewPhotosession() {
     go("style_list");
   }
@@ -344,7 +307,7 @@ export function ClientMiniApp() {
     }
   }
 
-  // Upload simulation
+  // Simulations
   React.useEffect(() => {
     if (busy !== "upload") return;
     if (uploadProgress >= 100) return;
@@ -356,12 +319,8 @@ export function ClientMiniApp() {
 
   React.useEffect(() => {
     if (busy !== "upload") return;
-    // Ensure simulation target follows current limits.
     if (uploadTarget > state.dataset.maxAllowed) setUploadTarget(state.dataset.maxAllowed);
-    const uploaded = Math.min(
-      uploadTarget,
-      Math.max(0, Math.round((uploadProgress / 100) * uploadTarget)),
-    );
+    const uploaded = Math.min(uploadTarget, Math.max(0, Math.round((uploadProgress / 100) * uploadTarget)));
     dispatch({ type: "upload_progress", uploaded });
     if (uploaded >= state.dataset.minRequired && state.dataset.status !== "ready") {
       dispatch({ type: "upload_ready" });
@@ -374,16 +333,11 @@ export function ClientMiniApp() {
     const t = window.setTimeout(() => {
       dispatch({ type: "upload_ready" });
       setBusy(null);
-      toast.push({
-        title: "Селфи загружены",
-        description: "Фото приняты. Дальше — подготовка аватара.",
-        variant: "success",
-      });
+      toast.push({ title: "Селфи загружены", variant: "success" });
     }, 450);
     return () => window.clearTimeout(t);
   }, [busy, uploadProgress, toast]);
 
-  // Training simulation
   React.useEffect(() => {
     if (state.training.status === "ready") return;
     if (state.training.status === "idle") return;
@@ -393,17 +347,12 @@ export function ClientMiniApp() {
       dispatch({ type: "training_progress", progress: next, etaMinutes: left });
       if (next >= 100) {
         dispatch({ type: "training_ready" });
-        toast.push({
-          title: "Аватар готов",
-          description: "Можно переходить к выбору стиля.",
-          variant: "success",
-        });
+        toast.push({ title: "Аватар готов", variant: "success" });
       }
     }, 520);
     return () => window.clearInterval(id);
   }, [dispatch, state.training.progress, state.training.status, toast]);
 
-  // Generation simulation (progress + then fetch photos)
   React.useEffect(() => {
     if (state.view !== "generating") return;
     if (state.generating.status !== "generating") return;
@@ -417,11 +366,7 @@ export function ClientMiniApp() {
 
   React.useEffect(() => {
     async function maybeFinish() {
-      if (state.view !== "generating") return;
-      if (state.generating.status !== "generating") return;
-      if (state.generating.progress < 100) return;
-      if (busy) return;
-
+      if (state.view !== "generating" || state.generating.status !== "generating" || state.generating.progress < 100 || busy) return;
       setBusy("gen");
       const photos: MockPhoto[] = Array.from({ length: 20 }).map((_, i) => ({
         id: `photo_${Date.now()}_${i}`,
@@ -432,27 +377,19 @@ export function ClientMiniApp() {
         id: `sess_${Date.now()}_${Math.random().toString(16).slice(2)}`,
         plan: state.plan,
         styleId: state.pendingStyleId ?? "pack",
-        styleTitle:
-          state.pendingStyleId === "custom"
-            ? "Свой стиль"
-            : pendingPack?.title ?? "Пакет",
+        styleTitle: state.pendingStyleId === "custom" ? "Свой стиль" : pendingPack?.title ?? "Пакет",
         styleMode: state.pendingStyleId === "custom" ? "custom" : "pack",
         prompt: state.pendingStyleId === "custom" ? state.pendingCustomPrompt : undefined,
-        settings:
-          state.pendingStyleId === "custom"
-            ? {
-                count: state.pendingCustomCount,
-                negative: state.pendingCustomNegative || undefined,
-                aspectRatio: state.pendingCustomAspect,
-                enhance: state.pendingEnhance,
-                cfgScale: state.pendingCustomCfgScale,
-                steps: state.pendingCustomSteps,
-                faceFix: state.pendingCustomFaceFix,
-              }
-            : {
-                count: state.plan === "pro" ? 30 : 20,
-                enhance: state.pendingEnhance,
-              },
+        settings: state.pendingStyleId === "custom" ? {
+          count: state.pendingCustomCount,
+          aspectRatio: state.pendingCustomAspect,
+          enhance: state.pendingEnhance,
+          steps: state.pendingCustomSteps,
+          faceFix: state.pendingCustomFaceFix,
+        } : {
+          count: 20,
+          enhance: state.pendingEnhance,
+        },
         createdAt: Date.now(),
         photos,
       };
@@ -462,70 +399,32 @@ export function ClientMiniApp() {
       go("gallery");
     }
     void maybeFinish();
-  }, [
-    busy,
-    pendingPack,
-    state.generating.progress,
-    state.generating.status,
-    state.pendingCustomAspect,
-    state.pendingCustomCount,
-    state.pendingCustomCfgScale,
-    state.pendingCustomFaceFix,
-    state.pendingCustomNegative,
-    state.pendingCustomPrompt,
-    state.pendingCustomSteps,
-    state.pendingEnhance,
-    state.pendingStyleId,
-    state.plan,
-    state.view,
-  ]);
+  }, [busy, pendingPack, state.generating.progress, state.generating.status, state.view]);
 
   async function generateFlow() {
     if (!isAvatarActive) {
-      toast.push({ 
-        title: "Аватар не активен", 
-        description: `Сначала разблокируйте доступ к аватару за ${cfg.costs.avatarTokens} токенов.`,
-        variant: "danger" 
-      });
+      toast.push({ title: "Аватар не активен", description: `Разблокируйте доступ за ${cfg.costs.avatarTokens} т.`, variant: "danger" });
       return;
     }
-    
     if (state.tokensBalance < costPerPhoto) {
-      toast.push({ 
-        title: "Недостаточно токенов", 
-        description: `Стоимость генерации 1 фото — ${costPerPhoto} токенов. Пополните баланс.`,
-        variant: "danger" 
-      });
+      toast.push({ title: "Недостаточно токенов", variant: "danger" });
       return;
     }
-
     try {
       setBusy("gen");
       const res = await fetch(`${API_BASE}/api/client/generate`, {
         method: "POST",
         headers: getAuthHeaders(),
-        body: JSON.stringify({
-          styleId: state.pendingStyleId,
-          modelId: state.pendingModelId,
-          count: photosPerPlan(state.plan),
-        }),
+        body: JSON.stringify({ styleId: state.pendingStyleId, modelId: state.pendingModelId, count: 20 }),
       });
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
-      
-      // Update local tokens immediately
-      dispatch({ 
-        type: "set_profile", 
-        tokensBalance: state.tokensBalance - data.spent,
-        avatarAccessExpiresAt: state.avatarAccessExpiresAt,
-        astriaStatus: state.astriaStatus
-      });
-      
+      dispatch({ type: "set_profile", tokensBalance: state.tokensBalance - data.spent, avatarAccessExpiresAt: state.avatarAccessExpiresAt, astriaStatus: state.astriaStatus });
       go("generating");
-      setBusy(null);
     } catch (err) {
-      setBusy(null);
       toast.push({ title: "Ошибка", description: String(err), variant: "danger" });
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -533,35 +432,15 @@ export function ClientMiniApp() {
     try {
       setBusy("pay");
       const order = await createOrder(state.plan);
-      const orderForDispatch = { 
-        ...order, 
-        plan: order.plan_id, 
-        amountRub: order.amount_rub, 
-        createdAt: Date.parse(order.created_at), 
-        paidAt: order.paid_at ? Date.parse(order.paid_at) : undefined 
-      };
+      const orderForDispatch = { ...order, plan: order.plan_id, amountRub: order.amount_rub, createdAt: Date.parse(order.created_at), paidAt: order.paid_at ? Date.parse(order.paid_at) : undefined };
       dispatch({ type: "order_created", order: orderForDispatch });
-      
-      // Simulate payment delay
       await new Promise(r => setTimeout(r, 1500));
-      
       const { paidAt } = await payOrder(order.id);
       dispatch({ type: "order_paid", paidAt: Date.parse(paidAt) });
-      
-      // Refresh profile to get new tokens and partner status
       await fetchProfile();
-      
       setBusy(null);
-      toast.push({
-        title: "Оплата прошла",
-        description: `Заказ: ${order.id}. Вам начислены токены!`,
-        variant: "success",
-      });
-      if (state.avatar.status === "ready") {
-        go("style_list");
-      } else {
-        go("upload");
-      }
+      toast.push({ title: "Оплата прошла", variant: "success" });
+      go(state.avatar.status === "ready" ? "style_list" : "upload");
     } catch (err) {
       setBusy(null);
       toast.push({ title: "Оплата не удалась", description: String(err), variant: "danger" });
@@ -571,11 +450,7 @@ export function ClientMiniApp() {
   async function unlockAvatar() {
     try {
       setBusy("unlock");
-      const res = await fetch(`${API_BASE}/api/client/unlock-avatar`, {
-        method: "POST",
-        headers: getAuthHeaders(),
-        body: JSON.stringify({}),
-      });
+      const res = await fetch(`${API_BASE}/api/client/unlock-avatar`, { method: "POST", headers: getAuthHeaders(), body: JSON.stringify({}) });
       if (!res.ok) throw new Error(await res.text());
       toast.push({ title: "Аватар разблокирован!", variant: "success" });
       await fetchProfile();
@@ -587,1401 +462,630 @@ export function ClientMiniApp() {
   }
 
   async function startTraining() {
-    if (state.dataset.uploaded < state.dataset.minRequired) {
-      toast.push({
-        title: "Не хватает фото",
-        description: `Загрузите минимум ${state.dataset.minRequired} фото (можно до ${state.dataset.maxAllowed}).`,
-      });
-      return;
-    }
+    if (state.dataset.uploaded < state.dataset.minRequired) return;
     if (busy) return;
     setBusy("train");
-    // Mock training start - in production use real API
-    const astriaModelId = `model_${Date.now()}`;
-    const jobId = `job_${Date.now()}`;
-    dispatch({ type: "training_queued", astriaModelId, jobId });
+    dispatch({ type: "training_queued", astriaModelId: `m_${Date.now()}`, jobId: `j_${Date.now()}` });
     setBusy(null);
     go("training");
-    toast.push({
-      title: "Обучение запущено",
-      description: "Готовим ваш аватар. Это займет несколько минут.",
-      variant: "success",
-    });
   }
+
+  function openPicker() { fileInputRef.current?.click(); }
 
   function startUpload() {
-    if (busy) return;
-    dispatch({ type: "upload_start" });
-    setUploadProgress(0);
+    if (picked.length === 0) return;
     setBusy("upload");
-  }
-
-  React.useEffect(() => {
-    return () => {
-      picked.forEach((p) => URL.revokeObjectURL(p.url));
-    };
-  }, [picked]);
-
-  function openPicker() {
-    fileInputRef.current?.click();
+    setUploadProgress(0);
+    // Simulation logic is already in useEffect triggered by busy === "upload"
   }
 
   function onFilesPicked(files: FileList | null) {
     if (!files || files.length === 0) return;
-
-    picked.forEach((p) => URL.revokeObjectURL(p.url));
-    const next = Array.from(files)
-      .filter((f) => f.type.startsWith("image/"))
-      .slice(0, state.dataset.maxAllowed)
-      .map((f) => ({ name: f.name, url: URL.createObjectURL(f) }));
-
+    const next = Array.from(files).filter((f) => f.type.startsWith("image/")).slice(0, state.dataset.maxAllowed).map((f) => ({ name: f.name, url: URL.createObjectURL(f) }));
     setPicked(next);
     setUploadProgress(100);
     dispatch({ type: "upload_progress", uploaded: next.length });
     dispatch({ type: "upload_ready" });
-    toast.push({
-      title: "Фото выбраны",
-      description: `Вы выбрали ${next.length} фото.`,
-      variant: next.length >= state.dataset.minRequired ? "success" : "default",
-    });
   }
 
-  function openSession(sessionId: string) {
-    dispatch({ type: "open_session", sessionId });
-  }
-
-  function startGeneratingConfirmedStyle() {
-    if (!state.pendingStyleId) {
-      toast.push({ title: "Стиль не выбран", description: "Вернитесь и выберите стиль." });
-      go("style_list");
-      return;
-    }
-    if (state.pendingStyleId === "custom" && !state.pendingCustomPrompt.trim()) {
-      toast.push({ title: "Введите описание", description: "Для своего стиля нужен текстовый запрос." });
-      go("style_list");
-      return;
-    }
-    dispatch({ type: "generating_start" });
-    go("generating");
-  }
-
-  const galleryPhotos: any[] = activeSession?.photos ?? [];
+  function openSession(sessionId: string) { dispatch({ type: "open_session", sessionId }); }
 
   return (
-    <PhoneShell
-      title="AI-фотосессия"
-      subtitle="Telegram Mini App"
-      hideHeader
-    >
-      {/* Auth Indicator */}
-      <div className="fixed right-4 top-4 z-50 flex items-center gap-2">
-        {isAuthenticated && (
-          <Badge className="bg-neonViolet/20 text-neonViolet border-neonViolet/30 shadow-[0_0_10px_rgba(139,92,246,0.3)]">
-            <Sparkles size={12} className="mr-1" />
-            <span className="font-bold">{state.tokensBalance}</span>
-          </Badge>
-        )}
-        {authLoading ? (
-          <Badge className="bg-white/10 text-white/60">
-            <Loader2 size={12} className="mr-1 animate-spin" />
-            Вход...
-          </Badge>
-        ) : isAuthenticated ? (
-          <Badge className="bg-neonBlue/20 text-neonBlue border-neonBlue/30">
-            <UserCheck size={12} className="mr-1" />
-            {user?.username || `ID: ${user?.tgId}`}
-          </Badge>
-        ) : (
-          <Badge className="bg-white/10 text-white/60">
-            <UserX size={12} className="mr-1" />
-            Гость
-          </Badge>
-        )}
-      </div>
-
-      <AnimatePresence mode="wait">
-        {state.view === "examples" ? (
-          <ExamplesScreen onBack={() => go("home")} />
-        ) : null}
-
-        {state.view === "home" ? (
-          <motion.div
-            key="home"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.12 }}
-            className="space-y-5"
-          >
-            <div>
-              <div className="text-xl font-semibold leading-tight">
-                Создай свою <span className="text-neonBlue">цифровую копию</span>
-              </div>
-              <div className="mt-2 text-sm text-white/65">
-                Премиальные портреты без студии и фотографа: один раз создайте аватар — дальше запускайте фотосессии в любых стилях за минуты.
-              </div>
-            </div>
-
-            <Card className="relative overflow-hidden p-4">
-              <div className="pointer-events-none absolute inset-0 bg-sheen opacity-60" />
-              <div className="flex items-start justify-between gap-3">
-                <div className="relative min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="text-sm font-semibold text-white/95">Твой аватар</div>
-                    {state.avatar.status === "ready" ? (
-                      <Pill tone="good">
-                        <CheckCircle2 size={12} />
-                        Готов
-                      </Pill>
-                    ) : (
-                      <Pill>
-                        <Lock size={12} />
-                        {isAvatarActive ? "Оплачен" : "Закрыт"}
-                      </Pill>
-                    )}
-                  </div>
-                  <div className="mt-2 text-xs text-white/60">
-                    {state.avatar.status === "ready"
-                      ? "Аватар готов — выбирай стиль и запускай новые фотосессии."
-                      : isAvatarActive
-                        ? "Доступ открыт. Загрузите фото, чтобы мы подготовили ваш аватар."
-                        : "Разблокируйте создание аватара, чтобы обучить нейросеть вашей внешности."}
-                  </div>
-                </div>
-              </div>
-              <div className="mt-4 flex gap-2">
-                {state.avatar.status !== "ready" ? (
-                  <Button 
-                    className="flex-1" 
-                    onClick={createAvatarFlow}
-                    disabled={busy === "unlock"}
-                  >
-                    {busy === "unlock" ? (
-                      <Loader2 className="animate-spin" size={16} />
-                    ) : (
-                      <UploadCloud size={16} />
-                    )}
-                    {isAvatarActive ? "Загрузить фото" : `Создать аватар (${cfg.costs.avatarTokens} т.)`}
-                  </Button>
+    <PhoneShell title="AI-фотосессия" subtitle="Telegram Mini App" hideHeader>
+      {/* Header Auth & Balance */}
+      <div className="fixed inset-x-0 top-0 z-50 flex h-14 items-center justify-between border-b border-white/5 bg-graphite/60 px-4 backdrop-blur-xl">
+        <div className="flex items-center gap-3">
+          {isAuthenticated ? (
+            <div className="flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/5 border border-white/10 overflow-hidden">
+                {user?.photo_url ? (
+                  <img src={user.photo_url} alt="" className="h-full w-full object-cover" />
                 ) : (
-                  <>
-                    <Button className="flex-1" onClick={startNewPhotosession}>
-                      <Sparkles size={16} />
-                      Новая фотосессия
-                    </Button>
-                    <Button
-                      className="flex-1"
-                      variant="secondary"
-                      onClick={async () => {
-                        try {
-                          const res = await fetch(`${API_BASE}/api/client/delete-avatar`, {
-                            method: "POST",
-                            headers: getAuthHeaders(),
-                            body: JSON.stringify({}),
-                          });
-                          if (!res.ok) throw new Error(await res.text());
-                          dispatch({ type: "delete_avatar" });
-                          toast.push({
-                            title: "Аватар удален",
-                            description: "Покупка доступа сброшена. Чтобы сделать новый, нужно будет снова оплатить токенами.",
-                            variant: "success",
-                          });
-                          await fetchProfile();
-                        } catch (err) {
-                          toast.push({ title: "Ошибка удаления", description: String(err), variant: "danger" });
-                        }
-                      }}
-                    >
-                      <Trash2 size={16} />
-                      Удалить
-                    </Button>
-                  </>
+                  <UserCheck size={16} className="text-white/40" />
                 )}
               </div>
-            </Card>
+              <div className="flex flex-col">
+                <span className="text-[11px] font-black text-white leading-none max-w-[80px] truncate">{user?.first_name || "Пользователь"}</span>
+                <span className="text-[9px] font-medium text-white/40 mt-0.5 uppercase tracking-wider">Профиль</span>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 opacity-50">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/5 border border-white/10">
+                <UserX size={16} className="text-white/40" />
+              </div>
+              <span className="text-[11px] font-black text-white uppercase tracking-wider leading-none">Гость</span>
+            </div>
+          )}
+        </div>
+        
+        <div className="flex items-center gap-2">
+          {isAuthenticated && (
+            <button 
+              onClick={() => go("pay")}
+              className="group flex items-center gap-2 rounded-full border border-neonViolet/30 bg-neonViolet/10 py-1 pl-1 pr-3 shadow-[0_0_20px_rgba(139,92,246,0.15)] transition-all active:scale-95 hover:border-neonViolet/50"
+            >
+              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-neonViolet/20 text-neonViolet shadow-inner">
+                <Sparkles size={12} className="group-hover:animate-pulse" />
+              </div>
+              <div className="flex flex-col items-start leading-none">
+                <span className="text-[11px] font-black text-white tracking-tight">{state.tokensBalance}</span>
+                <span className="text-[7px] font-bold text-neonViolet uppercase tracking-tighter">токенов</span>
+              </div>
+            </button>
+          )}
+        </div>
+      </div>
 
-            <Card className="p-4">
-              <SectionHeader title="Пополнить баланс" right={<span>Выберите пакет токенов</span>} />
-              <div className="mt-3 grid gap-2">
-                {plans.map((p) => (
-                  <button
-                    key={p.id}
-                    className={cn(
-                      "relative overflow-hidden text-left rounded-2xl border border-stroke bg-white/4 p-4 transition hover:bg-white/6",
-                      state.plan === p.id && (p.featured ? "shadow-pro ring-1 ring-neonViolet/30 bg-white/6" : "shadow-neon ring-1 ring-neonBlue/30 bg-white/6"),
-                    )}
-                    onClick={() => {
-                      dispatch({ type: "select_plan", plan: p.id as PlanId });
-                      go("pay");
-                    }}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <div className="truncate text-sm font-semibold text-white/95">{p.title}</div>
-                          {p.badge ? (
-                            <Badge className={cn("shrink-0", p.featured ? "border-neonViolet/30 bg-neonViolet/12 text-white" : "border-neonBlue/30 bg-neonBlue/12 text-white")}>
-                              {p.featured && <Crown size={14} />}
-                              {p.badge}
-                            </Badge>
-                          ) : null}
+      <div className="relative pt-16 pb-10 px-4 min-h-full">
+        {/* Background Decorative Elements */}
+        <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden opacity-30">
+          <div className="absolute -left-[10%] top-[10%] h-[400px] w-[400px] rounded-full bg-neonBlue/20 blur-[100px]" />
+          <div className="absolute -right-[10%] top-[40%] h-[300px] w-[300px] rounded-full bg-neonViolet/20 blur-[80px]" />
+        </div>
+
+        <AnimatePresence mode="wait">
+          {state.view === "examples" && <ExamplesScreen onBack={() => go("home")} />}
+
+          {state.view === "home" && (
+            <motion.div key="home" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-6">
+              <div className="relative z-10">
+                <div className="flex items-center gap-2 mb-2">
+                  <Badge className="bg-neonBlue/10 text-neonBlue border-neonBlue/20 text-[10px] py-0 h-5 px-2 font-bold uppercase tracking-wider">TMA v3.0</Badge>
+                  <Badge className="bg-white/5 text-white/40 border-white/10 text-[10px] py-0 h-5 px-2 font-bold uppercase tracking-wider">Beta</Badge>
+                </div>
+                <h1 className="text-3xl font-black leading-[1.1] tracking-tight text-white">
+                  Ваш персональный <br />
+                  <span className="bg-gradient-to-r from-neonBlue via-neonViolet to-neonPink bg-clip-text text-transparent">AI-фотограф</span>
+                </h1>
+                <p className="mt-3 text-sm text-white/50 leading-relaxed max-w-[280px]">
+                  Создавайте профессиональные портреты в одно касание.
+                </p>
+              </div>
+
+              <Card className="relative overflow-hidden p-6 border-white/10 bg-white/5 shadow-2xl">
+                <div className="pointer-events-none absolute -right-12 -top-12 h-40 w-40 rounded-full bg-neonBlue/10 blur-3xl" />
+                <div className="pointer-events-none absolute -left-12 -bottom-12 h-40 w-40 rounded-full bg-neonViolet/10 blur-3xl" />
+                
+                <div className="flex items-center justify-between mb-5">
+                  <div className="flex items-center gap-3">
+                    <div className={cn(
+                      "flex h-12 w-12 items-center justify-center rounded-2xl border transition-all duration-500",
+                      state.avatar.status === "ready" 
+                        ? "border-neonBlue/30 bg-neonBlue/10 text-neonBlue shadow-[0_0_15px_rgba(56,189,248,0.2)]" 
+                        : isAvatarActive 
+                          ? "border-neonViolet/30 bg-neonViolet/10 text-neonViolet shadow-[0_0_15px_rgba(139,92,246,0.2)]"
+                          : "border-white/10 bg-white/5 text-white/30"
+                    )}>
+                      {state.avatar.status === "ready" ? <UserCheck size={24} /> : isAvatarActive ? <Sparkles size={24} /> : <Lock size={24} />}
+                    </div>
+                    <div>
+                      <div className="text-sm font-black text-white uppercase tracking-tight">Ваш Аватар</div>
+                      <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest mt-0.5">
+                        {state.avatar.status === "ready" ? "Готов к работе" : isAvatarActive ? "Доступ оплачен" : "Требуется активация"}
+                      </div>
+                    </div>
+                  </div>
+                  {state.avatar.status === "ready" && (
+                    <Pill tone="good"><CheckCircle2 size={10} />Активен</Pill>
+                  )}
+                </div>
+
+                <p className="text-xs text-white/60 mb-6 leading-relaxed">
+                  {state.avatar.status === "ready"
+                    ? "Ваша цифровая копия готова. Вы можете генерировать фотографии в любых доступных стилях."
+                    : isAvatarActive
+                      ? "Доступ открыт! Загрузите от 4 до 20 своих селфи, чтобы нейросеть выучила вашу внешность."
+                      : "Чтобы начать пользоваться сервисом, необходимо разово разблокировать создание аватара."}
+                </p>
+
+                <div className="flex gap-3">
+                  {state.avatar.status !== "ready" ? (
+                    <Button 
+                      className={cn(
+                        "flex-1 h-12 text-sm font-bold shadow-neon transition-all active:scale-[0.98]",
+                        isAvatarActive ? "bg-neonViolet hover:bg-neonViolet/90" : "bg-neonBlue hover:bg-neonBlue/90"
+                      )} 
+                      onClick={createAvatarFlow} 
+                      disabled={busy === "unlock"}
+                    >
+                      {busy === "unlock" ? <Loader2 className="animate-spin" size={18} /> : isAvatarActive ? <UploadCloud size={18} className="mr-2" /> : <Crown size={18} className="mr-2" />}
+                      {isAvatarActive ? "Загрузить фото" : `Разблокировать (${cfg.costs.avatarTokens} т.)`}
+                    </Button>
+                  ) : (
+                    <>
+                      <Button className="flex-1 h-12 text-sm font-bold shadow-neon bg-neonBlue hover:bg-neonBlue/90 transition-all active:scale-[0.98]" onClick={startNewPhotosession}>
+                        <Sparkles size={18} className="mr-2" />Новая съемка
+                      </Button>
+                      <Button variant="secondary" className="h-12 w-12 shrink-0 border-white/5 bg-white/5 hover:bg-red-500/10 hover:border-red-500/20 hover:text-red-500 transition-all" onClick={async () => {
+                        if (!confirm("Вы уверены, что хотите удалить аватар? Все данные обучения будут стерты.")) return;
+                        try {
+                          await fetch(`${API_BASE}/api/client/delete-avatar`, { method: "POST", headers: getAuthHeaders(), body: JSON.stringify({}) });
+                          dispatch({ type: "delete_avatar" });
+                          await fetchProfile();
+                          toast.push({ title: "Аватар удален", variant: "success" });
+                        } catch (err) { toast.push({ title: "Ошибка", variant: "danger" }); }
+                      }}>
+                        <Trash2 size={18} />
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </Card>
+
+              <div className="space-y-4">
+                <SectionHeader title="Пополнить баланс" right="Выгодные наборы" />
+                <div className="grid gap-3">
+                  {plans.map((p) => (
+                    <button 
+                      key={p.id} 
+                      className={cn(
+                        "group relative overflow-hidden rounded-2xl border p-4 transition-all duration-300 active:scale-[0.98]",
+                        state.plan === p.id 
+                          ? (p.featured ? "border-neonViolet bg-neonViolet/10 shadow-pro" : "border-neonBlue bg-neonBlue/10 shadow-neon") 
+                          : "border-white/5 bg-white/2 hover:bg-white/5 hover:border-white/10"
+                      )} 
+                      onClick={() => { dispatch({ type: "select_plan", plan: p.id as PlanId }); go("pay"); }}
+                    >
+                      {p.featured && (
+                        <div className="absolute -right-8 -top-8 h-16 w-16 rotate-45 bg-neonViolet/20 blur-xl transition-all group-hover:bg-neonViolet/30" />
+                      )}
+                      <div className="flex justify-between items-center relative z-10">
+                        <div className="flex items-center gap-4">
+                          <div className={cn(
+                            "flex h-10 w-10 items-center justify-center rounded-xl border transition-colors",
+                            state.plan === p.id 
+                              ? (p.featured ? "border-neonViolet/30 bg-neonViolet/20 text-neonViolet" : "border-neonBlue/30 bg-neonBlue/20 text-neonBlue")
+                              : "border-white/10 bg-white/5 text-white/40"
+                          )}>
+                            <Sparkles size={18} />
+                          </div>
+                          <div className="text-left">
+                            <div className="flex items-center gap-2">
+                              <span className="text-[13px] font-black text-white">{p.title}</span>
+                              {p.badge && <Badge className="text-[8px] h-3.5 px-1 bg-neonViolet/20 text-neonViolet border-neonViolet/30 font-black uppercase leading-none">{p.badge}</Badge>}
+                            </div>
+                            <div className="text-[10px] font-bold text-white/30 uppercase tracking-widest mt-0.5">{p.tokens} токенов</div>
+                          </div>
                         </div>
-                        <div className="mt-1 text-xs text-white/65">{p.tokens} токенов</div>
+                        <div className="text-right">
+                          <div className="text-sm font-black text-white">{rub(p.priceRub)}</div>
+                          {p.id === "pro" && <div className="text-[9px] font-bold text-neonViolet uppercase tracking-tighter">-20% выгода</div>}
+                        </div>
                       </div>
-                      <div className="flex shrink-0 items-center gap-2 whitespace-nowrap">
-                        <div className="text-sm font-semibold text-white/90">{rub(p.priceRub)}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {state.sessions.length > 0 && (
+                <div className="space-y-4">
+                  <SectionHeader title="Ваша галерея" right={`${state.sessions.length} сессий`} />
+                  <div className="grid gap-3">
+                    {state.sessions.map((s) => (
+                      <button key={s.id} onClick={() => openSession(s.id)} className="text-left group active:scale-[0.98] transition-transform">
+                        <Card className="p-4 border-white/5 bg-white/2 hover:bg-white/5 hover:border-white/10 transition-all overflow-hidden relative">
+                          <div className="flex justify-between items-center mb-4">
+                            <div className="flex items-center gap-2">
+                              <div className="h-1.5 w-1.5 rounded-full bg-neonBlue shadow-[0_0_5px_#38BDF8]" />
+                              <span className="text-[11px] font-black text-white uppercase tracking-tight">{s.styleTitle}</span>
+                            </div>
+                            <span className="text-[9px] font-bold text-white/20 uppercase tracking-widest">{formatDate(s.createdAt)}</span>
+                          </div>
+                          <div className="grid grid-cols-4 gap-2 relative z-10">
+                            {s.photos.slice(0, 4).map((p, idx) => (
+                              <div key={p.id} className="relative aspect-square rounded-lg overflow-hidden border border-white/5">
+                                <SmartImage src={p.url} alt="" fallbackSeed={idx} className="h-full w-full object-cover transition-transform group-hover:scale-110" />
+                              </div>
+                            ))}
+                            {s.photos.length > 4 && (
+                              <div className="absolute right-0 bottom-0 h-6 w-10 bg-graphite/80 backdrop-blur-sm rounded-tl-lg rounded-br-lg flex items-center justify-center border-l border-t border-white/10">
+                                <span className="text-[9px] font-black text-white/60">+{s.photos.length - 4}</span>
+                              </div>
+                            )}
+                          </div>
+                        </Card>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          )}
+
+          {state.view === "pay" && (
+            <motion.div key="pay" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-black text-white">Оплата</h2>
+                <Button variant="secondary" size="sm" onClick={goHome}><ArrowLeft size={14} className="mr-1" />Назад</Button>
+              </div>
+              <div className="grid gap-4">
+                {plans.map((p) => (
+                  <button key={p.id} className={cn("relative overflow-hidden text-left rounded-3xl border p-6 transition-all", state.plan === p.id ? (p.featured ? "border-neonViolet bg-neonViolet/10 shadow-pro" : "border-neonBlue bg-neonBlue/10 shadow-neon") : "border-white/5 bg-white/3")} onClick={() => dispatch({ type: "select_plan", plan: p.id as any })}>
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <div className="text-lg font-bold text-white mb-1">{p.title}</div>
+                        <div className="text-sm font-medium text-neonBlue mb-4">{p.tokens} токенов</div>
+                        <div className="text-xs text-white/40 leading-relaxed">{p.tagline}</div>
                       </div>
+                      <div className="text-xl font-black text-white">{rub(p.priceRub)}</div>
                     </div>
                   </button>
                 ))}
               </div>
-            </Card>
+              <Card className="p-6">
+                <div className="flex items-center gap-4 mb-6">
+                  <div className="h-12 w-12 rounded-2xl bg-white/5 flex items-center justify-center text-white/30"><Lock size={24} /></div>
+                  <div>
+                    <div className="text-sm font-bold text-white">Безопасный платеж</div>
+                    <div className="text-xs text-white/40">Через Telegram Payment</div>
+                  </div>
+                </div>
+                <Button className="w-full py-7 text-lg font-bold shadow-neon" onClick={payFlow} disabled={busy === "pay" || !state.plan}>
+                  {busy === "pay" ? <Loader2 className="animate-spin mr-2" /> : <Save size={20} className="mr-2" />}
+                  Оплатить {rub(plans.find(p => p.id === state.plan)?.priceRub || 0)}
+                </Button>
+              </Card>
+            </motion.div>
+          )}
 
-            {state.avatar.status === "ready" && (
-              <Card className="p-4">
-                <SectionHeader title="Управление" />
-                <div className="mt-3 grid gap-2">
-                  <Button className="w-full" onClick={startNewPhotosession}>
-                    <Sparkles size={16} />
-                    Выбрать новый стиль
+          {state.view === "upload" && (
+            <motion.div key="upload" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-black text-white">Загрузка фото</h2>
+                  <p className="text-xs text-white/40 mt-1">{state.dataset.uploaded}/{state.dataset.maxAllowed} фотографий</p>
+                </div>
+                <Button variant="secondary" size="sm" onClick={goHome}><ArrowLeft size={14} className="mr-1" />Меню</Button>
+              </div>
+
+              <Card className="p-6">
+                <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => onFilesPicked(e.target.files)} />
+                <Button className="w-full py-8 border-2 border-dashed border-white/10 bg-white/2 hover:bg-white/5 transition-all text-white/80" onClick={openPicker} disabled={busy === "upload"}>
+                  <UploadCloud size={24} className="mb-2" />
+                  Выбрать фотографии
+                </Button>
+
+                {picked.length > 0 && (
+                  <div className="mt-6">
+                    <div className="grid grid-cols-4 gap-2 mb-4">
+                      {picked.slice(0, 8).map((p, idx) => (
+                        <SmartImage key={idx} src={p.url} alt="" className="aspect-square rounded-xl" />
+                      ))}
+                      {picked.length > 8 && <div className="aspect-square rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-[10px] text-white/40">+{picked.length - 8}</div>}
+                    </div>
+                    <Button variant="secondary" className="w-full h-9 text-xs" onClick={() => setPicked([])}>Очистить список</Button>
+                  </div>
+                )}
+
+                <div className="mt-8 pt-8 border-t border-white/5">
+                  <div className="flex justify-between text-[10px] font-bold text-white/40 uppercase tracking-widest mb-2">
+                    <span>Прогресс загрузки</span>
+                    <span className="text-neonBlue">{Math.round(uploadProgress)}%</span>
+                  </div>
+                  <Progress value={uploadProgress} className="h-1.5" />
+                  <div className="mt-4 flex gap-2">
+                    <Button variant="secondary" size="sm" className="flex-1 h-10 text-[11px]" onClick={startUpload} disabled={busy === "upload" || picked.length === 0}>Начать загрузку</Button>
+                    <div className="flex gap-1">
+                      {[4, 20].map(n => (
+                        <button key={n} onClick={() => setUploadTarget(n)} className={cn("w-10 h-10 rounded-xl border text-[10px] font-bold transition", uploadTarget === n ? "border-neonBlue bg-neonBlue/10 text-neonBlue" : "border-white/5 bg-white/5 text-white/30")}>{n}</button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-8">
+                  <Button className="w-full py-6 shadow-neon" onClick={startTraining} disabled={state.dataset.uploaded < state.dataset.minRequired || busy === "train" || !isAvatarActive}>
+                    {busy === "train" ? <Loader2 className="animate-spin mr-2" /> : <ArrowRight size={20} className="mr-2" />}
+                    Запустить обучение
                   </Button>
                 </div>
               </Card>
-            )}
 
-            <Card className="p-4">
-              <SectionHeader title="Примеры" />
-              <div className="mt-3 grid grid-cols-3 gap-2">
-                {SHOWCASE_PHOTOS.slice(0, 3).map((p, idx) => (
-                  <SmartImage
-                    key={p.id}
-                    src={p.url}
-                    alt={p.label}
-                    fallbackSeed={idx}
-                    className="h-24 w-full rounded-2xl"
-                  />
-                ))}
-              </div>
-              <div className="mt-4">
-                <Button className="w-full" onClick={() => go("examples")}>
-                  <ImageIcon size={16} />
-                  Смотреть примеры
-                  <ArrowRight size={16} />
-                </Button>
-              </div>
-            </Card>
-
-            <div className="space-y-3">
-              <SectionHeader
-                title="История фотосессий"
-                right={<span>Сессий: {state.sessions.length}</span>}
-              />
-
-              {state.sessions.length === 0 ? (
-                <Card className="relative overflow-hidden p-4">
-                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-neonBlue/10 via-neonViolet/8 to-transparent" />
-                  <div className="relative">
-                    <div className="text-sm font-semibold text-white/90">Пока пусто</div>
-                    <div className="mt-1 text-xs text-white/60">
-                      Запусти первую фотосессию — тут появится история и быстрый доступ к галереям.
+              <Card className="p-6">
+                <div className="flex items-center gap-2 text-neonBlue mb-4 font-bold text-sm uppercase tracking-tight">
+                  <Sparkles size={18} /> Советы
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  {[
+                    { t: "Свет", d: "Яркое освещение" },
+                    { t: "Ракурсы", d: "Прямо и профиль" },
+                    { t: "Лицо", d: "Без очков и масок" },
+                    { t: "Качество", d: "Четкие селфи" },
+                  ].map((it, i) => (
+                    <div key={i} className="bg-white/2 rounded-2xl p-3 border border-white/5">
+                      <div className="text-[11px] font-bold text-white/90">{it.t}</div>
+                      <div className="text-[10px] text-white/40 mt-0.5">{it.d}</div>
                     </div>
-                    <div className="mt-4 grid grid-cols-4 gap-2 text-[11px] text-white/70">
-                      <Pill>Оплата</Pill>
-                      <Pill>Аватар</Pill>
-                      <Pill>Стиль</Pill>
-                      <Pill tone="good">Галерея</Pill>
-                    </div>
-                  </div>
-                </Card>
-              ) : (
-                <div className="grid gap-3">
-                  {state.sessions.map((s) => (
-                    <button
-                      key={s.id}
-                      onClick={() => openSession(s.id)}
-                      className="text-left"
-                    >
-                      <Card className="p-4 transition hover:bg-white/4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="truncate text-sm font-semibold text-white/95">
-                              {s.styleTitle}
-                            </div>
-                            <div className="mt-1 text-xs text-white/60">
-                              {formatDate(s.createdAt)} • {s.photos.length} фото
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2 text-xs text-white/55">
-                            <span className="hidden sm:inline">Открыть</span>
-                            <ArrowRight size={16} />
-                          </div>
-                        </div>
-                        <div className="mt-3 grid grid-cols-3 gap-2">
-                          {s.photos.slice(0, 3).map((p, idx) => (
-                            <SmartImage
-                              key={p.id}
-                              src={p.url}
-                              alt={p.label}
-                              fallbackSeed={idx}
-                              className="h-16 w-full rounded-2xl"
-                            />
-                          ))}
-                        </div>
-                      </Card>
-                    </button>
                   ))}
                 </div>
-              )}
-            </div>
-          </motion.div>
-        ) : null}
+              </Card>
+            </motion.div>
+          )}
 
-        {state.view === "pay" ? (
-          <motion.div
-            key="pay"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.12 }}
-            className="space-y-5"
-          >
-	            <div className="flex items-start justify-between gap-3">
-	              <div>
-	                <div className="text-base font-semibold text-white/95">Оплата фотосессии</div>
-	                <div className="mt-1 text-xs text-white/60">
-	                  {state.avatar.status === "ready"
-	                    ? "После оплаты выберите стиль — и получите готовую подборку в галерее. Все результаты сохраняются в истории."
-	                    : `После оплаты вы загрузите ${state.dataset.minRequired}–${state.dataset.maxAllowed} фото — мы подготовим ваш аватар. Затем выберете стиль и получите результат в галерее.`}
-	                </div>
-	              </div>
-	              <Button
-	                variant="secondary"
-	                size="sm"
-	                className="shrink-0 whitespace-nowrap"
-	                onClick={goHome}
-	              >
-	                <ArrowLeft size={16} />
-	                Меню
-	              </Button>
-	            </div>
-
-            <div className="grid gap-3">
-              <div className="text-sm font-semibold text-white/90">Тарифы</div>
-              <div className="grid gap-3">
-                {plans.map((p) => (
-                  <button
-                    key={p.id}
-                    className={cn(
-                      "relative overflow-hidden text-left rounded-2xl border border-stroke bg-white/4 p-4 transition hover:bg-white/6",
-                      state.plan === p.id && (p.featured ? "shadow-pro ring-1 ring-neonViolet/30 bg-white/6" : "shadow-neon ring-1 ring-neonBlue/30 bg-white/6"),
-                    )}
-                    onClick={() => dispatch({ type: "select_plan", plan: p.id as any })}
-                    aria-pressed={state.plan === p.id}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <div className="truncate text-sm font-semibold text-white/95">{p.title}</div>
-                          {p.badge ? (
-                            <Badge className={cn("shrink-0", p.featured ? "border-neonViolet/30 bg-neonViolet/12 text-white" : "border-neonBlue/30 bg-neonBlue/12 text-white")}>
-                              {p.featured && <Crown size={14} />}
-                              {p.badge}
-                            </Badge>
-                          ) : null}
-                        </div>
-                        <div className="mt-1 text-xs text-white/65">{p.tokens} токенов</div>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-2 whitespace-nowrap">
-                        <div className="text-sm font-semibold text-white/90">{rub(p.priceRub)}</div>
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <Card className="p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-sm font-semibold text-white/90">К оплате</div>
-                  <div className="mt-1 text-xs text-white/60">
-                    В проде здесь будет Telegram invoice / провайдер (пока не выбран).
-                  </div>
-                </div>
-                <Badge className="bg-white/5">
-                  <Lock size={14} />
-                  Pay
-                </Badge>
-              </div>
-	              <div className="mt-4 flex gap-2">
-	                <Button
-	                  className="flex-1 whitespace-nowrap"
-	                  onClick={payFlow}
-	                  disabled={busy === "pay"}
-	                >
-	                  {busy === "pay" ? (
-	                    <>
-	                      <Loader2 className="animate-spin" size={16} />
-	                      Оплачиваю…
-	                    </>
-	                  ) : (
-	                    <>
-	                      Оплатить {rub(plans.find(p => p.id === state.plan)?.priceRub || 0)}
-	                    </>
-	                  )}
-	                </Button>
-	                <Button variant="secondary" className="flex-1" onClick={goHome}>
-	                  Отмена
-	                </Button>
-	              </div>
-            </Card>
-          </motion.div>
-        ) : null}
-
-        {state.view === "upload" ? (
-          <motion.div
-            key="upload"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.12 }}
-            className="space-y-5"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-	                <div className="text-base font-semibold text-white/95">Создание аватара</div>
-	                <div className="mt-1 text-xs text-white/60">
-	                  Загрузите {state.dataset.minRequired}–{state.dataset.maxAllowed} фото — мы сделаем аватар и будем использовать его для будущих фотосессий.
-	                </div>
-	              </div>
-              <Button
-                variant="secondary"
-                size="sm"
-                className="shrink-0 whitespace-nowrap"
-                onClick={goHome}
-              >
-                Меню
-              </Button>
-            </div>
-
-            <Card className="p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-sm font-semibold text-white/90">Загрузка фото</div>
-                  <div className="mt-1 text-xs text-white/60">
-                    Минимум {state.dataset.minRequired} фото, максимум {state.dataset.maxAllowed}. Чем больше и разнообразнее — тем лучше.
-                  </div>
-                </div>
-                <Badge className={cn(state.dataset.status === "ready" ? "bg-neonBlue/12 border-neonBlue/30" : "bg-white/5")}>
-                  {state.dataset.status === "ready" ? <CheckCircle2 size={14} /> : <UploadCloud size={14} />}
-                  {state.dataset.status === "ready"
-                    ? `${state.dataset.uploaded}/${state.dataset.maxAllowed}`
-                    : `${state.dataset.uploaded}/${state.dataset.maxAllowed}`}
-                </Badge>
-              </div>
-
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                className="hidden"
-                onChange={(e) => onFilesPicked(e.target.files)}
-              />
-
-              <div className="mt-4 flex gap-2">
-                <Button className="flex-1" onClick={openPicker}>
-                  <UploadCloud size={16} />
-                  Выбрать фото
-                </Button>
-                {picked.length ? (
-                  <Button
-                    className="flex-1"
-                    variant="secondary"
-                    onClick={() => {
-                      picked.forEach((p) => URL.revokeObjectURL(p.url));
-                      setPicked([]);
-                      setUploadProgress(0);
-                      dispatch({ type: "upload_progress", uploaded: 0 });
-                      toast.push({ title: "Список очищен" });
-                    }}
-                  >
-                    Очистить
-                  </Button>
-                ) : null}
-              </div>
-
-              {picked.length ? (
-                <div className="mt-4">
-                  <div className="text-xs text-white/55">Выбрано: {picked.length}</div>
-                  <div className="mt-2 grid grid-cols-4 gap-2">
-                    {picked.slice(0, 8).map((p, idx) => (
-                      <SmartImage
-                        key={`${p.name}_${idx}`}
-                        src={p.url}
-                        alt={p.name}
-                        fallbackSeed={idx}
-                        className="h-16 w-full rounded-2xl"
-                      />
-                    ))}
-                  </div>
-                  {picked.length > 8 ? (
-                    <div className="mt-2 text-xs text-white/55">
-                      и еще {picked.length - 8}…
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <span className="text-xs text-white/55">Симуляция:</span>
-                {[4, 20, 30].map((n) => (
-                  <button
-                    key={n}
-                    onClick={() => setUploadTarget(n)}
-                    className={cn(
-                      "rounded-full border px-2.5 py-1 text-[11px] transition",
-                      uploadTarget === n
-                        ? "border-neonBlue/30 bg-neonBlue/10 text-white/90"
-                        : "border-stroke bg-white/4 text-white/70 hover:bg-white/6",
-                    )}
-                  >
-                    {n} фото
-                  </button>
-                ))}
-              </div>
-
-              <div className="mt-3">
-                <Progress value={uploadProgress} />
-                <div className="mt-2 flex items-center justify-between text-xs text-white/55">
-                  <span>{busy === "upload" ? "Загрузка..." : state.dataset.status === "ready" ? "Готово" : "Ожидание"}</span>
-                  <span>{Math.round(uploadProgress)}%</span>
-                </div>
-              </div>
-
-              <div className="mt-4 flex gap-2">
-                <Button variant="secondary" className="flex-1" onClick={startUpload} disabled={busy === "upload"}>
-                  {busy === "upload" ? (
-                    <>
-                      <Loader2 className="animate-spin" size={16} />
-                      Загружаю…
-                    </>
-                  ) : (
-                    <>
-                      <UploadCloud size={16} />
-                      Симулировать загрузку
-                    </>
-                  )}
-                </Button>
-                <Button
-                  className="flex-1"
-                  onClick={unlockAvatar}
-                  disabled={busy === "unlock" || isAvatarActive}
-                >
-                  {busy === "unlock" ? (
-                    <>
-                      <Loader2 className="animate-spin" size={16} />
-                      Разблокировка…
-                    </>
-                  ) : isAvatarActive ? (
-                    <>
-                      <CheckCircle2 size={16} />
-                      Разблокировано
-                    </>
-                  ) : (
-                    <>
-                      <Lock size={16} />
-                      Разблокировать ({cfg.costs.avatarTokens} токенов)
-                    </>
-                  )}
-                </Button>
-                <Button
-                  className="flex-1"
-                  onClick={startTraining}
-                  disabled={state.dataset.uploaded < state.dataset.minRequired || busy === "train" || !isAvatarActive}
-                >
-                  {busy === "train" ? (
-                    <>
-                      <Loader2 className="animate-spin" size={16} />
-                      Запускаю…
-                    </>
-                  ) : (
-                    <>
-                      Запустить обучение
-                      <ArrowRight size={16} />
-                    </>
-                  )}
-                </Button>
-              </div>
-            </Card>
-
-            <Card className="p-4">
-              <SectionHeader title="Какие фото подойдут" right={<span>чтобы результат был лучше</span>} />
-              <div className="mt-3 grid gap-3">
-                <div className="rounded-2xl border border-stroke bg-white/3 p-3">
-                  <div className="text-xs font-semibold text-white/85">Подойдут</div>
-                  <ul className="mt-2 space-y-1 text-xs text-white/65">
-                    <li>— Лицо хорошо видно, без масок/солнцезащитных очков</li>
-                    <li>— Разные ракурсы: прямо, 3/4, профиль</li>
-                    <li>— Разное освещение: дневной свет, мягкий комнатный</li>
-                    <li>— Нормальное качество: не размыто, без сильных фильтров</li>
-                    <li>— Оставляйте немного “воздуха” вокруг лица (не обрезайте слишком близко)</li>
-                  </ul>
-                </div>
-                <div className="rounded-2xl border border-stroke bg-white/3 p-3">
-                  <div className="text-xs font-semibold text-white/85">Лучше не загружать</div>
-                  <ul className="mt-2 space-y-1 text-xs text-white/65">
-                    <li>— Групповые фото, где несколько лиц</li>
-                    <li>— Сильные фильтры, “мыльные” селфи, низкое разрешение</li>
-                    <li>— Один и тот же ракурс на всех кадрах</li>
-                    <li>— Сильно обрезанные кадры без лба/подбородка</li>
-                  </ul>
-                </div>
-              </div>
-              <div className="mt-3 text-xs text-white/55">
-                Минимум {state.dataset.minRequired} фото, максимум {state.dataset.maxAllowed}. Для хорошего результата обычно достаточно 10–20 фото.
-                Формат JPG/PNG, лучше без сильного сжатия (примерно до 3 МБ на фото) и размером от 512×512.
-              </div>
-            </Card>
-          </motion.div>
-        ) : null}
-
-        {state.view === "training" ? (
-          <motion.div
-            key="training"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.12 }}
-            className="space-y-4"
-          >
-            <Card className="relative overflow-hidden p-5">
+          {state.view === "training" && (
+            <motion.div key="training" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="flex flex-col items-center justify-center min-h-[70vh] py-10 text-center space-y-10">
               <div className="relative">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-base font-semibold text-white/95">
-                      Готовим ваш аватар{" "}
-                      <span className="text-white/70">(осталось ~{state.training.etaMinutes} мин)</span>
-                    </div>
-                    <div className="mt-1 text-sm text-white/65">
-                      Можно закрыть приложение — процесс продолжится.
-                    </div>
-                  </div>
-                  <div className="h-12 w-12 rounded-2xl border border-stroke bg-white/5 p-3">
-                    <Loader2 className="h-6 w-6 animate-spin text-neonBlue" />
-                  </div>
-                </div>
-
-                <div className="mt-4 space-y-2">
-                  <Progress value={state.training.progress} />
-                  <div className="flex items-center justify-between text-xs text-white/55">
-                    <span>{state.training.status === "queued" ? "В очереди…" : "Обучение и валидация…"}</span>
-                    <span>{Math.round(state.training.progress)}%</span>
-                  </div>
-                </div>
-
-                <div className="mt-4 flex gap-2">
-                  <Button variant="secondary" className="flex-1" onClick={goHome}>
-                    В меню
-                  </Button>
-	                  <Button
-	                    className="flex-1"
-	                    onClick={() => go("style_list")}
-	                    disabled={state.training.status !== "ready"}
-	                  >
-	                    {state.training.status === "ready" ? "Продолжить" : "Ждем готовность…"}
-	                    <ArrowRight size={16} />
-	                  </Button>
+                <div className="absolute inset-0 bg-neonBlue/20 blur-[60px] animate-pulse" />
+                <div className="relative h-40 w-40 rounded-[3rem] border-2 border-neonBlue/30 bg-graphite/40 backdrop-blur-xl flex items-center justify-center text-neonBlue shadow-neon">
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
+                  >
+                    <Loader2 size={64} className="opacity-50" />
+                  </motion.div>
+                  <motion.div
+                    className="absolute"
+                    animate={{ scale: [1, 1.2, 1] }}
+                    transition={{ duration: 2, repeat: Infinity }}
+                  >
+                    <Sparkles size={48} />
+                  </motion.div>
                 </div>
               </div>
-            </Card>
-          </motion.div>
-        ) : null}
 
-        {state.view === "style_list" ? (
-          <motion.div
-            key="style_list"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.12 }}
-            className="space-y-4"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-base font-semibold text-white/95">Выбор стиля</div>
-                <div className="mt-1 text-xs text-white/60">
-                  Выберите стиль, посмотрите примеры и подтвердите — затем начнется генерация фотосессии.
-                </div>
+              <div className="space-y-4 max-w-[280px]">
+                <h2 className="text-3xl font-black text-white tracking-tight">Обучаем модель</h2>
+                <p className="text-sm text-white/50 leading-relaxed">
+                  Мы создаем вашу цифровую копию. Это займет около <span className="text-neonBlue font-bold">{state.training.etaMinutes} минут</span>.
+                </p>
               </div>
-              <Button
-                variant="secondary"
-                size="sm"
-                className="shrink-0 whitespace-nowrap"
-                onClick={goHome}
-              >
-                Меню
+
+              <div className="w-full max-w-[280px] space-y-4">
+                <div className="flex justify-between items-end">
+                  <div className="text-[10px] font-black text-white/20 uppercase tracking-[0.2em]">Прогресс обучения</div>
+                  <div className="text-sm font-black text-neonBlue">{Math.round(state.training.progress)}%</div>
+                </div>
+                <Progress value={state.training.progress} className="h-3 shadow-[0_0_15px_rgba(56,189,248,0.1)]" />
+              </div>
+
+              <Button variant="secondary" onClick={goHome} className="border-white/5 bg-white/5 text-white/40 hover:text-white/60">
+                Вернуться в меню
               </Button>
-            </div>
+            </motion.div>
+          )}
 
-            <Card className="p-4">
-              <SectionHeader title="Модель генерации" />
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                {(cfg.costs?.models || []).map((m) => {
-                  const active = (state.pendingModelId === m.id) || (!state.pendingModelId && m.isDefault);
-                  return (
-                    <button
-                      key={m.id}
-                      onClick={() => dispatch({ type: "select_model", modelId: m.id })}
-                      className={cn(
-                        "rounded-2xl border p-3 text-left transition",
-                        active
-                          ? "border-neonBlue/50 bg-neonBlue/10 shadow-neon"
-                          : "border-stroke bg-white/4 hover:bg-white/6",
-                      )}
-                    >
-                      <div className="text-sm font-semibold text-white/95">{m.title}</div>
-                      <div className="mt-1 text-[10px] text-white/60">{m.costPerPhoto} т. / фото</div>
-                    </button>
-                  );
-                })}
-              </div>
-            </Card>
-
-            <Card className="p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div className="text-xs text-white/65">
-                  Аватар:{" "}
-                  <span className="text-white/85">
-                    {state.avatar.status === "ready" ? "готов" : "нет аватара"}
-                  </span>
+          {state.view === "style_list" && (
+            <motion.div key="style_list" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-black text-white leading-tight">Выберите стиль</h2>
+                  <p className="text-xs text-white/40 mt-1 uppercase tracking-widest font-bold">Доступно {packs.length} вариантов</p>
                 </div>
+                <Button variant="secondary" size="sm" onClick={goHome} className="h-9 px-3 border-white/5 bg-white/5"><ArrowLeft size={16} className="mr-1" />Назад</Button>
               </div>
-              <div className="mt-4 grid gap-2">
-                <button
-                  onClick={() => go("style_custom")}
-                  className="flex items-start gap-3 rounded-2xl border border-neonBlue/30 bg-neonBlue/10 p-3 text-left transition hover:bg-neonBlue/12"
-                >
-                  <div className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-2xl border border-neonBlue/30 bg-black/10">
-                    <Sparkles size={18} className="text-neonBlue" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="truncate text-sm font-semibold text-white/95">Создать свой стиль</div>
-                      <Pill tone="good">Гибко</Pill>
-                    </div>
-                    <div className="mt-1 text-xs text-white/70">
-                      Задайте свой текст, формат кадра и количество — и получите фотосессию под вашу идею.
-                    </div>
-                  </div>
-                </button>
-
-                {packsLoading
-                  ? Array.from({ length: 4 }).map((_, i) => (
-                      <div
-                        key={i}
-                        className="flex items-start gap-3 rounded-2xl border border-stroke bg-white/3 p-3"
-                      >
-                        <div className="h-16 w-16 rounded-2xl border border-stroke bg-white/5" />
-                        <div className="min-w-0 flex-1">
-                          <div className="h-4 w-40 rounded bg-white/10" />
-                          <div className="mt-2 h-3 w-56 rounded bg-white/10" />
-                        </div>
-                      </div>
-                    ))
-                  : packs.map((p) => (
-                  <button
-                    key={p.id}
+              <div className="grid grid-cols-2 gap-4">
+                {packs.map(p => (
+                  <button 
+                    key={p.id} 
                     onClick={() => {
                       dispatch({ type: "style_picked", styleId: String(p.id) });
                       go("style_confirm");
-                    }}
-                    className="flex items-start gap-3 rounded-2xl border border-stroke bg-white/4 p-3 text-left transition hover:bg-white/6"
+                    }} 
+                    className="group text-left active:scale-[0.98] transition-transform"
                   >
-                    <SmartImage
-                      alt={p.title}
-                      src={p.coverUrl}
-                      fallbackSeed={p.id}
-                      className="h-16 w-16 rounded-2xl"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="truncate text-sm font-semibold text-white/95">{p.title}</div>
-                        <Pill tone="neutral">{p.estimatedImages} фото</Pill>
+                    <div className="relative aspect-[3/4] rounded-3xl overflow-hidden border border-white/10 bg-white/5 group-hover:border-neonBlue transition-all shadow-lg group-hover:shadow-neon/20">
+                      {p.preview_urls?.[0] ? (
+                        <SmartImage src={p.preview_urls[0]} alt={p.title} className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                      ) : (
+                        <div className="h-full w-full flex items-center justify-center text-white/5"><ImageIcon size={48} /></div>
+                      )}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-80 group-hover:opacity-100 transition-opacity" />
+                      <div className="absolute bottom-4 left-4 right-4">
+                        <div className="text-sm font-black text-white leading-tight group-hover:text-neonBlue transition-colors">{p.title}</div>
+                        <div className="text-[10px] font-bold text-white/50 mt-1 uppercase tracking-tighter line-clamp-1">{p.description}</div>
                       </div>
-                      <div className="mt-1 text-xs text-white/60">{p.vibe}</div>
+                      <div className="absolute top-3 right-3 h-7 w-7 rounded-full bg-black/40 backdrop-blur-md border border-white/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all translate-y-2 group-hover:translate-y-0">
+                        <ArrowRight size={14} className="text-white" />
+                      </div>
                     </div>
                   </button>
                 ))}
               </div>
-            </Card>
-          </motion.div>
-        ) : null}
+            </motion.div>
+          )}
 
-        {state.view === "style_custom" ? (
-          <motion.div
-            key="style_custom"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.12 }}
-            className="h-full"
-          >
-            <div className="flex h-full flex-col">
-              <div className="flex-1 space-y-3 pb-24">
-                <div>
-                  <div className="text-base font-semibold text-white/95">Свой стиль</div>
-                  <div className="mt-1 text-xs text-white/60">
-                    Опишите, какую фотосессию хотите получить. Мы сохраним лицо и сделаем серию кадров в выбранном
-                    образе.
+          {state.view === "style_confirm" && (
+            <motion.div key="style_confirm" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }} className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-black text-white">Настройка съемки</h2>
+                <Button variant="secondary" size="sm" onClick={() => go("style_list")} className="h-9 px-3 border-white/5 bg-white/5"><ArrowLeft size={16} className="mr-1" />Стили</Button>
+              </div>
+              
+              <Card className="p-0 overflow-hidden border-white/10 bg-white/5 shadow-2xl">
+                <div className="relative aspect-[4/3] w-full overflow-hidden">
+                  {pendingPack?.preview_urls?.[0] ? (
+                    <SmartImage src={pendingPack.preview_urls[0]} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="h-full w-full bg-white/5 flex items-center justify-center text-white/5"><ImageIcon size={64} /></div>
+                  )}
+                  <div className="absolute inset-0 bg-gradient-to-t from-graphite via-transparent to-transparent" />
+                  <div className="absolute bottom-6 left-6 right-6">
+                    <h3 className="text-2xl font-black text-white tracking-tight">{pendingPack?.title || "Свой стиль"}</h3>
+                    <p className="text-sm text-white/60 mt-2 leading-relaxed">{pendingPack?.description}</p>
                   </div>
                 </div>
 
-                <Card className="p-4">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-xs font-semibold text-white/85">Как это работает</div>
-                    <Pill tone="brand">Гибкая настройка</Pill>
-                  </div>
-                  <div className="mt-2 space-y-2 text-xs text-white/65">
-                    <div>
-                      <span className="text-white/80">Описание</span> — что вы хотите увидеть: свет, локация, одежда,
-                      настроение.
-                    </div>
-                    <div>
-                      <span className="text-white/80">Не добавлять</span> — что точно не должно попасть в кадр (например:
-                      текст, логотипы, очки, борода).
-                    </div>
-                    <div>
-                      <span className="text-white/80">Формат</span> — под аватарку, сторис или обложку.
-                    </div>
-                  </div>
-                </Card>
-
-                <Card className="p-4">
-                  <div className="text-xs font-semibold text-white/85">Настройки</div>
-                  <div className="mt-3 grid gap-2">
-                    <label className="text-xs text-white/60">
-                      Описание
-                      <textarea
-                        value={state.pendingCustomPrompt}
-                        onChange={(e) =>
-                          dispatch({
-                            type: "custom_update",
-                            prompt: e.target.value,
-                            negative: state.pendingCustomNegative,
-                            count: state.pendingCustomCount,
-                            aspect: state.pendingCustomAspect,
-                            enhance: state.pendingEnhance,
-                          })
-                        }
-                        rows={4}
-                        className="mt-2 w-full resize-none rounded-2xl border border-stroke bg-white/4 px-3 py-2 text-sm text-white/90 outline-none focus:ring-2 focus:ring-neonBlue/30"
-                        placeholder="Пример: стильный портрет в реальной городской локации, золотой час, мягкий киношный свет, естественная кожа, лёгкая улыбка, casual‑одежда, аккуратный фон, 35mm, realistic, high detail"
-                      />
-                    </label>
-                    <label className="text-xs text-white/60">
-                      Не добавлять (по желанию)
-                      <input
-                        value={state.pendingCustomNegative}
-                        onChange={(e) =>
-                          dispatch({
-                            type: "custom_update",
-                            prompt: state.pendingCustomPrompt,
-                            negative: e.target.value,
-                            count: state.pendingCustomCount,
-                            aspect: state.pendingCustomAspect,
-                            enhance: state.pendingEnhance,
-                          })
-                        }
-                        className="mt-2 w-full rounded-2xl border border-stroke bg-white/4 px-3 py-2 text-sm text-white/90 outline-none focus:ring-2 focus:ring-neonBlue/30"
-                        placeholder="Пример: текст, логотип, водяной знак, очки, борода, шапка"
-                      />
-                    </label>
-
-                    <div>
-                      <div className="text-xs text-white/60">Формат фото</div>
-                      <button
-                        type="button"
-                        onClick={() => setAspectSheetOpen(true)}
-                        className="mt-2 flex w-full items-center justify-between rounded-2xl border border-stroke bg-white/4 px-3 py-2 text-left text-sm text-white/90 outline-none transition hover:bg-white/6 focus:ring-2 focus:ring-neonBlue/30"
-                        aria-label="Выбрать формат фото"
-                      >
-                        <div className="min-w-0">
-                          <div className="truncate">
-                            {ASPECT_OPTIONS.find((o) => o.value === state.pendingCustomAspect)?.title ?? "Формат"}
-                            <span className="text-white/55"> • {state.pendingCustomAspect}</span>
-                          </div>
-                          <div className="mt-0.5 truncate text-[11px] text-white/55">
-                            {ASPECT_OPTIONS.find((o) => o.value === state.pendingCustomAspect)?.desc ?? ""}
-                          </div>
-                        </div>
-                        <ArrowRight size={16} className="shrink-0 text-white/60" />
-                      </button>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="text-xs text-white/60">Количество фото</div>
-                      <Pill tone="neutral">{photosPerPlan(state.plan)} по тарифу</Pill>
-                    </div>
-
-                    <details className="rounded-2xl border border-stroke bg-white/3 p-3">
-                      <summary className="cursor-pointer select-none text-xs font-semibold text-white/85">
-                        Дополнительно (если хочется точнее)
-                      </summary>
-                      <div className="mt-3 grid gap-3">
-                        <div>
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="text-xs text-white/70">Насколько слушаться описания</div>
-                            <Pill tone="neutral">{Math.round(state.pendingCustomCfgScale * 10) / 10}</Pill>
-                          </div>
-                          <input
-                            type="range"
-                            min={3}
-                            max={11}
-                            step={0.5}
-                            value={state.pendingCustomCfgScale}
-                            onChange={(e) => dispatch({ type: "custom_cfg", cfgScale: Number(e.target.value) })}
-                            className="mt-2 w-full accent-neonBlue"
-                            aria-label="Строгость описания"
-                          />
-                          <div className="mt-1 flex items-center justify-between text-[11px] text-white/55">
-                            <span>Можно фантазировать</span>
-                            <span>Как в описании</span>
-                          </div>
-                        </div>
-
-                        <div>
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="text-xs text-white/70">Скорость / детализация</div>
-                            <Pill tone="neutral">{state.pendingCustomSteps} шагов</Pill>
-                          </div>
-                          <div className="mt-2 grid grid-cols-3 gap-2">
-                            {[
-                              { title: "Быстро", steps: 20 },
-                              { title: "Баланс", steps: 28 },
-                              { title: "Максимум", steps: 40 },
-                            ].map((p) => {
-                              const active = state.pendingCustomSteps === p.steps;
-                              return (
-                                <button
-                                  key={p.steps}
-                                  type="button"
-                                  onClick={() => dispatch({ type: "custom_steps", steps: p.steps })}
-                                  className={cn(
-                                    "rounded-2xl border px-3 py-2 text-sm transition",
-                                    active
-                                      ? "border-neonBlue/50 bg-neonBlue/10 text-white/90"
-                                      : "border-stroke bg-white/4 text-white/80 hover:bg-white/6",
-                                  )}
-                                >
-                                  {p.title}
-                                </button>
-                              );
-                            })}
-                          </div>
-                          <div className="mt-1 text-[11px] text-white/55">
-                            Чем “Максимум”, тем дольше, но обычно аккуратнее детали.
-                          </div>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => dispatch({ type: "custom_facefix", on: !state.pendingCustomFaceFix })}
-                          className={cn(
-                            "flex items-center justify-between rounded-2xl border px-3 py-2 text-left text-sm transition",
-                            state.pendingCustomFaceFix
-                              ? "border-neonBlue/40 bg-neonBlue/10 text-white/90"
-                              : "border-stroke bg-white/4 text-white/80 hover:bg-white/6",
-                          )}
-                        >
-                          <div>
-                            <div className="text-xs font-semibold">Улучшать лицо</div>
-                            <div className="mt-0.5 text-[11px] text-white/60">
-                              Помогает, если глаза/черты иногда “плывут”
-                            </div>
-                          </div>
-                          <div
+                <div className="p-6 space-y-6">
+                  <div className="space-y-4">
+                    <SectionHeader title="Выбор AI-модели" right="Качество генерации" />
+                    <div className="grid grid-cols-2 gap-3">
+                      {(cfg.costs?.models || []).map(m => {
+                        const active = (state.pendingModelId === m.id) || (!state.pendingModelId && m.isDefault);
+                        return (
+                          <button 
+                            key={m.id} 
+                            onClick={() => dispatch({ type: "select_model", modelId: m.id })} 
                             className={cn(
-                              "h-6 w-10 rounded-full border p-0.5",
-                              state.pendingCustomFaceFix
-                                ? "border-neonBlue/50 bg-neonBlue/20"
-                                : "border-stroke bg-white/5",
+                              "relative p-4 rounded-2xl border transition-all active:scale-[0.98]",
+                              active 
+                                ? "border-neonBlue bg-neonBlue/10 shadow-[0_0_15px_rgba(56,189,248,0.1)]" 
+                                : "border-white/5 bg-white/3 hover:bg-white/5 hover:border-white/10"
                             )}
-                            aria-hidden
                           >
-                            <div
-                              className={cn(
-                                "h-5 w-5 rounded-full transition",
-                                state.pendingCustomFaceFix ? "translate-x-4 bg-neonBlue" : "translate-x-0 bg-white/35",
-                              )}
-                            />
-                          </div>
-                        </button>
-                      </div>
-                    </details>
+                            <div className="flex justify-between items-start mb-2">
+                              <div className={cn("text-xs font-black uppercase tracking-tight", active ? "text-neonBlue" : "text-white/60")}>{m.title}</div>
+                              {active && <CheckCircle2 size={12} className="text-neonBlue" />}
+                            </div>
+                            <div className="text-[10px] font-bold text-white/30 uppercase tracking-widest">{m.costPerPhoto} т. / фото</div>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                </Card>
-              </div>
 
-              <div className="sticky bottom-0 -mx-5 -mb-5 border-t border-stroke bg-graphite/85 px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur">
-                <div className="flex gap-2">
-                  <Button variant="secondary" className="flex-1" onClick={() => go("style_list")}>
-                    <ArrowLeft size={16} />
-                    Назад
-                  </Button>
-                  <Button
-                    className="flex-1"
-                    onClick={() => {
-                      if (!state.pendingCustomPrompt.trim()) return;
-                      dispatch({ type: "style_picked", styleId: "custom" });
-                      go("style_confirm");
-                    }}
-                    disabled={!state.pendingCustomPrompt.trim()}
-                  >
-                    Продолжить
-                    <ArrowRight size={16} />
-                  </Button>
-                </div>
-              </div>
-
-              <BottomSheet open={aspectSheetOpen} onClose={() => setAspectSheetOpen(false)} title="Формат фото">
-                <div className="grid gap-2">
-                  {ASPECT_OPTIONS.map((o) => {
-                    const active = o.value === state.pendingCustomAspect;
-                    return (
-                      <button
-                        key={o.value}
-                        type="button"
-                        onClick={() => {
-                          dispatch({
-                            type: "custom_update",
-                            prompt: state.pendingCustomPrompt,
-                            negative: state.pendingCustomNegative,
-                            count: state.pendingCustomCount,
-                            aspect: o.value,
-                            enhance: state.pendingEnhance,
-                          });
-                          setAspectSheetOpen(false);
-                        }}
-                        className={cn(
-                          "rounded-2xl border p-3 text-left transition",
-                          active
-                            ? "border-neonBlue/50 bg-neonBlue/10"
-                            : "border-stroke bg-white/4 hover:bg-white/6",
-                        )}
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="text-sm font-semibold text-white/90">{o.title}</div>
-                          <Pill tone={active ? "good" : "neutral"}>{o.value}</Pill>
-                        </div>
-                        <div className="mt-1 text-xs text-white/60">{o.desc}</div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </BottomSheet>
-            </div>
-          </motion.div>
-        ) : null}
-
-        {state.view === "style_confirm" ? (
-          <motion.div
-            key="style_confirm"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.12 }}
-            className="h-full"
-          >
-            <div className="flex h-full flex-col">
-              <div className="flex-1 space-y-4 pb-28">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="text-base font-semibold text-white/95">Примеры стиля</div>
-                    <div className="mt-1 text-xs text-white/60">Посмотрите примеры и подтвердите стиль.</div>
-                  </div>
-                </div>
-
-                <Card className="p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="text-sm font-semibold text-white/90">
-                        {state.pendingStyleId === "custom" ? "Свой стиль" : pendingPack?.title ?? "—"}
+                  <div className="bg-white/3 rounded-2xl p-4 border border-white/5 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-xl bg-neonViolet/10 border border-neonViolet/20 flex items-center justify-center text-neonViolet">
+                        <Sparkles size={20} />
                       </div>
-                      <div className="mt-1 text-xs text-white/60">
-                        {state.pendingStyleId === "custom"
-                          ? state.pendingCustomPrompt.trim()
-                          : pendingPack?.description ?? pendingPack?.vibe ?? ""}
+                      <div>
+                        <div className="text-[11px] font-black text-white uppercase tracking-tight">Итоговая стоимость</div>
+                        <div className="text-[10px] font-bold text-white/30 uppercase tracking-widest mt-0.5">20 фотографий</div>
                       </div>
                     </div>
-                  <Pill tone="neutral">{photosPerPlan(state.plan)} фото</Pill>
-                  </div>
-                  <div className="mt-3 grid grid-cols-3 gap-2">
-                    <SmartImage
-                      alt={state.pendingStyleId === "custom" ? "Custom style" : pendingPack?.title ?? "Pack"}
-                      src={state.pendingStyleId === "custom" ? undefined : pendingPack?.coverUrl}
-                      fallbackSeed={(pendingPack?.id ?? 0) + 40}
-                      className="col-span-3 h-40 w-full rounded-2xl"
-                    />
-                    {(state.pendingStyleId === "custom"
-                      ? SHOWCASE_PHOTOS.slice(0, 3).map((p) => p.url)
-                      : pendingPack?.previewUrls?.slice(0, 3) ?? [])
-                      .slice(0, 3)
-                      .map((src, idx) => (
-                        <SmartImage
-                          key={`${src}_${idx}`}
-                          src={src}
-                          alt="Preview"
-                          fallbackSeed={idx + 20}
-                          className="h-20 w-full rounded-2xl"
-                        />
-                      ))}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => dispatch({ type: "enhance_toggle", on: !state.pendingEnhance })}
-                    className={cn(
-                      "mt-3 w-full flex items-center justify-between rounded-2xl border px-3 py-2 text-left text-sm transition",
-                      state.pendingEnhance
-                        ? "border-neonBlue/40 bg-neonBlue/10 text-white/90"
-                        : "border-stroke bg-white/4 text-white/80 hover:bg-white/6",
-                    )}
-                  >
-                    <div className="min-w-0">
-                      <div className="text-xs font-semibold">Улучшенное качество</div>
-                      <div className="mt-0.5 truncate text-[11px] text-white/60">
-                        Дольше, но аккуратнее детали и лицо
-                      </div>
+                    <div className="text-right">
+                      <div className="text-lg font-black text-white">{20 * costPerPhoto} <span className="text-[10px] text-white/40 ml-0.5 font-bold uppercase">токенов</span></div>
                     </div>
-                    <div
-                      className={cn(
-                        "h-6 w-10 shrink-0 rounded-full border p-0.5",
-                        state.pendingEnhance ? "border-neonBlue/50 bg-neonBlue/20" : "border-stroke bg-white/5",
-                      )}
-                      aria-hidden
-                    >
-                      <div
-                        className={cn(
-                          "h-5 w-5 rounded-full transition",
-                          state.pendingEnhance ? "translate-x-4 bg-neonBlue" : "translate-x-0 bg-white/35",
-                        )}
-                      />
-                    </div>
-                  </button>
-                </Card>
-              </div>
+                  </div>
 
-              <div className="sticky bottom-0 -mx-5 -mb-5 border-t border-stroke bg-graphite/85 px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur">
-                <div className="flex gap-2">
-                  <Button variant="secondary" className="flex-1 whitespace-nowrap" onClick={() => go("style_list")}>
-                    <ArrowLeft size={16} />
-                    Другой стиль
-                  </Button>
-                  <Button className="flex-1 whitespace-nowrap" onClick={generateFlow}>
-                    Генерировать ({photosPerPlan(state.plan) * costPerPhoto} т.)
-                    <ArrowRight size={16} />
+                  <Button className="w-full py-7 text-lg font-black shadow-neon bg-gradient-to-r from-neonBlue to-neonViolet hover:opacity-90 transition-all active:scale-[0.98]" onClick={generateFlow} disabled={busy === "gen"}>
+                    {busy === "gen" ? <Loader2 className="animate-spin mr-2" /> : <Sparkles size={20} className="mr-2" />}
+                    Запустить генерацию
                   </Button>
                 </div>
-              </div>
-            </div>
-          </motion.div>
-        ) : null}
+              </Card>
+            </motion.div>
+          )}
 
-        {state.view === "generating" ? (
-          <motion.div
-            key="generating"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.12 }}
-            className="space-y-4"
-          >
-            <Card className="relative overflow-hidden p-5">
+          {state.view === "generating" && (
+            <motion.div key="generating" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="flex flex-col items-center justify-center min-h-[70vh] py-10 text-center space-y-10">
               <div className="relative">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-base font-semibold text-white/95">
-                      Фото генерируются{" "}
-                      <span className="text-white/70">(осталось ~{state.generating.etaSeconds} сек)</span>
-                    </div>
-                    <div className="mt-1 text-sm text-white/65">
-                      Стиль:{" "}
-                      <span className="text-white/85">
-                        {state.pendingStyleId === "custom"
-                          ? "Свой стиль"
-                          : pendingPack?.title ?? "—"}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="h-12 w-12 rounded-2xl border border-stroke bg-white/5 p-3">
-                    <Loader2 className="h-6 w-6 animate-spin text-neonBlue" />
-                  </div>
-                </div>
-
-                <div className="mt-4 space-y-2">
-                  <Progress value={state.generating.progress} />
-                  <div className="flex items-center justify-between text-xs text-white/55">
-                    <span>Рендер сцен • композиция • пост‑процесс</span>
-                    <span>{Math.round(state.generating.progress)}%</span>
-                  </div>
-                </div>
-
-                <div className="mt-4 grid grid-cols-3 gap-2">
-                  {Array.from({ length: 6 }).map((_, i) => (
-                    <div
-                      key={i}
-                      className="shimmer-surface h-20 w-full rounded-2xl border border-stroke bg-white/4"
-                    />
-                  ))}
-                </div>
-
-                <div className="mt-4 flex gap-2">
-                  <Button variant="secondary" className="flex-1" onClick={goHome}>
-                    В меню
-                  </Button>
-                </div>
-              </div>
-            </Card>
-          </motion.div>
-        ) : null}
-
-        {state.view === "gallery" ? (
-          <motion.div
-            key="gallery"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.12 }}
-            className="h-full"
-          >
-            <div className="flex h-full flex-col">
-              <div className="flex-1 space-y-4 pb-24">
-                <div className="flex items-end justify-between gap-3">
-                  <div>
-                    <div className="text-base font-semibold text-white/95">Галерея</div>
-                    <div className="mt-1 text-xs text-white/60">
-                      {activeSession ? `${activeSession.styleTitle} • ${formatDate(activeSession.createdAt)}` : "—"}
-                    </div>
-                  </div>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    className="shrink-0 whitespace-nowrap"
-                    onClick={goHome}
+                <div className="absolute inset-0 bg-neonViolet/20 blur-[60px] animate-pulse" />
+                <div className="relative h-40 w-40 rounded-full border-2 border-neonViolet/30 bg-graphite/40 backdrop-blur-xl flex items-center justify-center text-neonViolet shadow-[0_0_30px_rgba(167,139,250,0.3)]">
+                  <motion.div
+                    animate={{ rotate: -360 }}
+                    transition={{ duration: 12, repeat: Infinity, ease: "linear" }}
                   >
-                    Меню
-                  </Button>
-                </div>
-
-                <div className="grid grid-cols-3 gap-2">
-                  {galleryPhotos.map((p, idx) => (
-                    <button key={p.id} className="group relative" onClick={() => setLightboxIndex(idx)}>
-                      <SmartImage src={p.url} alt={p.label} fallbackSeed={idx} className="h-28 w-full" />
-                      <div className="pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-t from-black/65 via-black/10 to-transparent opacity-0 transition group-hover:opacity-100" />
-                    </button>
-                  ))}
+                    <Sparkles size={64} className="opacity-50" />
+                  </motion.div>
+                  <motion.div
+                    className="absolute"
+                    animate={{ scale: [1, 1.1, 1], opacity: [0.5, 1, 0.5] }}
+                    transition={{ duration: 3, repeat: Infinity }}
+                  >
+                    <div className="h-24 w-24 rounded-full border-4 border-dashed border-neonViolet/20" />
+                  </motion.div>
                 </div>
               </div>
 
-              <div className="sticky bottom-0 z-10 -mx-5 -mb-5 border-t border-stroke bg-graphite px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-12px_30px_rgba(0,0,0,0.55)]">
-                <div className="flex gap-2">
-                  <Button className="flex-1 whitespace-nowrap" onClick={goHome}>
-                    В меню
-                  </Button>
-                  <Button variant="secondary" className="flex-1 whitespace-nowrap" onClick={startNewPhotosession}>
-                    Новая фотосессия
-                  </Button>
-                </div>
+              <div className="space-y-4 max-w-[280px]">
+                <h2 className="text-3xl font-black text-white tracking-tight">Создаем шедевр</h2>
+                <p className="text-sm text-white/50 leading-relaxed">
+                  Генерируем {20} уникальных портретов в выбранном стиле. Осталось около <span className="text-neonViolet font-bold">{state.generating.etaSeconds} сек.</span>
+                </p>
               </div>
-            </div>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
 
-      <Lightbox
-        open={lightboxIndex !== null}
-        index={lightboxIndex ?? 0}
-        onChangeIndex={(next) => setLightboxIndex(next)}
-        onClose={() => setLightboxIndex(null)}
-        photos={galleryPhotos}
-      />
+              <div className="w-full max-w-[280px] space-y-4">
+                <div className="flex justify-between items-end">
+                  <div className="text-[10px] font-black text-white/20 uppercase tracking-[0.2em]">Магия в процессе</div>
+                  <div className="text-sm font-black text-neonViolet">{Math.round(state.generating.progress)}%</div>
+                </div>
+                <Progress value={state.generating.progress} className="h-3 shadow-[0_0_15px_rgba(167,139,250,0.1)]" />
+              </div>
+
+              <Button variant="secondary" onClick={goHome} className="border-white/5 bg-white/5 text-white/40 hover:text-white/60">
+                Отменить
+              </Button>
+            </motion.div>
+          )}
+
+          {state.view === "gallery" && activeSession && (
+            <motion.div key="gallery" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }} className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="h-2 w-2 rounded-full bg-neonBlue animate-pulse shadow-[0_0_8px_#38BDF8]" />
+                    <span className="text-[10px] font-black text-white/40 uppercase tracking-[0.2em]">{formatDate(activeSession.createdAt)}</span>
+                  </div>
+                  <h2 className="text-2xl font-black text-white truncate leading-tight">{activeSession.styleTitle}</h2>
+                </div>
+                <Button variant="secondary" size="sm" onClick={goHome} className="h-10 px-4 border-white/5 bg-white/5"><ArrowLeft size={16} className="mr-2" />В меню</Button>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                {activeSession.photos.map((p, idx) => (
+                  <motion.button 
+                    key={p.id} 
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: idx * 0.05 }}
+                    onClick={() => setLightboxIndex(idx)} 
+                    className="relative aspect-[3/4] rounded-[2rem] overflow-hidden border border-white/10 bg-white/5 hover:border-neonBlue transition-all group shadow-xl active:scale-[0.98]"
+                  >
+                    <SmartImage src={p.url} alt="" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all scale-50 group-hover:scale-100">
+                      <div className="h-12 w-12 rounded-full bg-white/20 backdrop-blur-md border border-white/20 flex items-center justify-center">
+                        <ImageIcon size={20} className="text-white" />
+                      </div>
+                    </div>
+                  </motion.button>
+                ))}
+              </div>
+
+              <div className="pt-4 pb-10">
+                <Button variant="secondary" className="w-full py-6 border-dashed border-white/10 text-white/40 hover:text-white/60 hover:border-white/20 transition-all" onClick={goHome}>
+                  Вернуться к списку сессий
+                </Button>
+              </div>
+
+              <Lightbox 
+                open={lightboxIndex !== null}
+                photos={activeSession.photos} 
+                index={lightboxIndex ?? 0} 
+                onChangeIndex={(idx) => setLightboxIndex(idx)}
+                onClose={() => setLightboxIndex(null)} 
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
     </PhoneShell>
   );
 }
 
 function ExamplesScreen({ onBack }: { onBack: () => void }) {
-  const photos = SHOWCASE_PHOTOS;
-  const [index, setIndex] = React.useState(0);
-  const safeIndex = clampIndex(index, photos.length);
-  const active = photos[safeIndex];
-
   return (
-    <motion.div
-      key="examples"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.12 }}
-      className="-m-5 h-full min-h-[calc(100vh-4rem)]"
-    >
-      <div className="relative h-full min-h-[calc(100vh-4rem)] overflow-hidden bg-black/20">
-        <motion.div
-          key={active.id}
-          initial={{ opacity: 0.75 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.12 }}
-          className="flex h-full items-center justify-center bg-black/30"
-        >
-          <SmartImage
-            src={active.url}
-            alt={active.label}
-            fallbackSeed={safeIndex}
-            fit="contain"
-            frame={false}
-            className="h-full w-full"
-          />
-        </motion.div>
-
-        <motion.div
-          className="absolute inset-0 cursor-grab active:cursor-grabbing"
-          drag="x"
-          dragConstraints={{ left: 0, right: 0 }}
-          dragElastic={0.25}
-          onDragEnd={(_, info) => {
-            const threshold = 70;
-            if (info.offset.x > threshold) setIndex((i) => i - 1);
-            if (info.offset.x < -threshold) setIndex((i) => i + 1);
-          }}
-          aria-label="Swipe area"
-        />
-
-        <div className="absolute left-3 top-3">
-          <button
-            className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-stroke bg-graphite/55 text-white/85 backdrop-blur hover:bg-white/8"
-            onClick={onBack}
-            aria-label="Back"
-          >
-            <ArrowLeft size={18} />
-          </button>
-        </div>
-
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2">
-          <div className="rounded-full border border-stroke bg-graphite/55 px-3 py-2 backdrop-blur">
-            <div className="flex items-center gap-1.5">
-              {photos.map((_, i) => (
-                <button
-                  key={i}
-                  className={cn(
-                    "h-2 w-2 rounded-full transition",
-                    i === safeIndex ? "bg-neonBlue/90" : "bg-white/20 hover:bg-white/35",
-                  )}
-                  onClick={() => setIndex(i)}
-                  aria-label={`Go to slide ${i + 1}`}
-                />
-              ))}
-            </div>
-          </div>
-        </div>
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-black text-white">Примеры</h2>
+        <Button variant="secondary" size="sm" onClick={onBack}><ArrowLeft size={14} className="mr-1" />Назад</Button>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+          <div key={i} className="aspect-[3/4] rounded-3xl bg-white/5 border border-white/5 animate-pulse" />
+        ))}
       </div>
     </motion.div>
   );

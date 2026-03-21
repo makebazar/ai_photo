@@ -10,6 +10,9 @@ export type AuthUser = {
   id: number;
   tgId: number;
   username: string | null;
+  first_name?: string;
+  last_name?: string;
+  photo_url?: string;
 };
 
 export type AuthPartner = {
