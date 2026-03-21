@@ -27,7 +27,7 @@ import { useAdminStore, type AdminAction } from "./adminStore";
 import {
   getUsers, getOrders, getPartners, getWithdrawals,
   getAdminConfig, getPacks, getPromos, getSessions,
-  deleteUser, adjustUserTokens, updateAdminConfig,
+  deleteUser, deletePartner, adjustUserTokens, updateAdminConfig,
   type AdminPack as ApiAdminPack,
   type AdminPromo as ApiAdminPromo,
   type AdminConfig,
@@ -239,6 +239,21 @@ export function AdminDashboard() {
       setLoading(true);
       await deleteUser(userId);
       toast.push({ title: "Пользователь удален", variant: "success" });
+      await refreshData();
+    } catch (err) {
+      toast.push({ title: "Ошибка при удалении", description: String(err), variant: "danger" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeletePartner = async (publicId: number) => {
+    if (!confirm("Вы уверены, что хотите удалить этого партнера? Это удалит его баланс, ссылки и комиссионные записи. Данные пользователя (клиента) останутся.")) return;
+    
+    try {
+      setLoading(true);
+      await deletePartner(publicId);
+      toast.push({ title: "Партнер удален", variant: "success" });
       await refreshData();
     } catch (err) {
       toast.push({ title: "Ошибка при удалении", description: String(err), variant: "danger" });
@@ -511,7 +526,7 @@ export function AdminDashboard() {
                 })
                 .finally(() => setLoading(false));
             }} />
-            <PartnersList partners={state.partners} />
+            <PartnersList partners={state.partners} onDelete={handleDeletePartner} />
           </div>
         )}
         {nav === "withdrawals" && <WithdrawalsList withdrawals={state.withdrawals} />}
@@ -1062,7 +1077,7 @@ function OrdersList({ orders }: { orders: any[] }) {
   );
 }
 
-function PartnersList({ partners }: { partners: any[] }) {
+function PartnersList({ partners, onDelete }: { partners: any[]; onDelete: (publicId: number) => void }) {
   return (
     <Card>
       <div className="overflow-x-auto">
@@ -1076,6 +1091,7 @@ function PartnersList({ partners }: { partners: any[] }) {
 
 
               <th className="p-3">Статус</th>
+              <th className="p-3 text-right">Действия</th>
             </tr>
           </thead>
           <tbody>
@@ -1108,11 +1124,20 @@ function PartnersList({ partners }: { partners: any[] }) {
                     {p.status}
                   </span>
                 </td>
+                <td className="p-3 text-right">
+                  <button
+                    onClick={() => onDelete(Number(p.partnerId))}
+                    className="rounded-lg p-2 text-white/40 transition hover:bg-red-500/10 hover:text-red-400"
+                    title="Удалить партнера"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </td>
               </tr>
             ))}
             {partners.length === 0 && (
               <tr>
-                <td colSpan={5} className="p-8 text-center text-white/60">
+                <td colSpan={6} className="p-8 text-center text-white/60">
                   Нет партнёров
                 </td>
               </tr>

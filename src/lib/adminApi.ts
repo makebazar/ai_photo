@@ -131,6 +131,12 @@ export async function blockPartner(publicId: string, blocked: boolean): Promise<
   });
 }
 
+export async function deletePartner(publicId: number): Promise<void> {
+  await fetchAdmin(`/api/admin/partners/${publicId}`, {
+    method: "DELETE",
+  });
+}
+
 export async function adjustPartnerBalance(publicId: string, deltaRub: number, reason: string): Promise<void> {
   await fetchAdmin(`/api/admin/partners/${publicId}/adjust-balance`, {
     method: "POST",
