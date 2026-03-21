@@ -461,10 +461,10 @@ async function main() {
       const merged = {
         ...current,
         ...(patch ?? {}),
-        planPricesRub: { ...current.planPricesRub, ...(patch.planPricesRub ?? {}) },
-        planMeta: { ...current.planMeta, ...(patch.planMeta ?? {}) },
+        plans: Array.isArray(patch.plans) ? patch.plans : current.plans,
         commissionsPct: { ...current.commissionsPct, ...(patch.commissionsPct ?? {}) },
         payout: { ...current.payout, ...(patch.payout ?? {}) },
+        costs: { ...current.costs, ...(patch.costs ?? {}) },
       };
       await db.query(`update app_config set config = $1::jsonb, updated_at = now() where id = 1`, [
         JSON.stringify(merged),
