@@ -684,6 +684,17 @@ async function main() {
     return { ok: true };
   });
 
+  app.post("/api/client/delete-avatar", async (req) => {
+    const userId = req.userId;
+    await withTx(pool, async (db) => {
+      // 1. Delete avatar record (and images via cascade if implemented, or manually)
+      await db.query(`delete from avatars where user_id = $1`, [userId]);
+      // 2. Reset avatar access so user has to pay again
+      await db.query(`update users set avatar_access_expires_at = null where id = $1`, [userId]);
+    });
+    return { ok: true };
+  });
+
   app.get("/api/admin/users", async (req) => {
     requireAdmin(req);
     const rows = await withTx(pool, async (db) => {
@@ -970,9 +981,18 @@ async function main() {
         [user.id]
       );
       const avatar = avatarRows.rows[0];
-      let astriaStatus = "none";
+      let avatarAccessExpiresAt = user.avatar_access_expires_at;
+
       if (avatar?.astria_model_id) {
-        astriaStatus = await checkAstriaModelStatus(avatar.astria_model_id);
+        const astriaStatus = await checkAstriaModelStatus(avatar.astria_model_id);
+        if (astriaStatus === "deleted") {
+          console.log(`[Auth] Avatar model ${avatar.astria_model_id} deleted in Astria. Resetting access.`);
+          avatarAccessExpiresAt = null;
+          await db.query(
+            `update users set avatar_access_expires_at = null where id = $1`,
+            [user.id]
+          );
+        }
       }
 
       return {
@@ -981,8 +1001,7 @@ async function main() {
           tgId: user.tg_id,
           username: user.username,
           tokensBalance: user.tokens_balance,
-          avatarAccessExpiresAt: user.avatar_access_expires_at,
-          astriaStatus, // Sync status with Astria
+          avatarAccessExpiresAt,
         },
         partner: partner ? {
           id: partner.id,

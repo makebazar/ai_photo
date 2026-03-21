@@ -678,23 +678,10 @@ export function ClientMiniApp() {
                   <div className="flex items-center justify-between gap-3">
                     <div className="text-sm font-semibold text-white/95">Твой аватар</div>
                     {state.avatar.status === "ready" ? (
-                      <div className="flex items-center gap-2">
-                        {state.astriaStatus === "active" ? (
-                          <Badge className="border-green-500/30 bg-green-500/10 text-green-400">
-                            <RefreshCcw size={12} className="mr-1" />
-                            Astria: OK
-                          </Badge>
-                        ) : state.astriaStatus === "deleted" ? (
-                          <Badge className="border-red-500/30 bg-red-500/10 text-red-400">
-                            <CloudOff size={12} className="mr-1" />
-                            Удален
-                          </Badge>
-                        ) : null}
-                        <Pill tone="good">
-                          <CheckCircle2 size={12} />
-                          Готов
-                        </Pill>
-                      </div>
+                      <Pill tone="good">
+                        <CheckCircle2 size={12} />
+                        Готов
+                      </Pill>
                     ) : (
                       <Pill>
                         <Lock size={12} />
@@ -733,16 +720,27 @@ export function ClientMiniApp() {
                     <Button
                       className="flex-1"
                       variant="secondary"
-                      onClick={() => {
-                        dispatch({ type: "delete_avatar" });
-                        toast.push({
-                          title: "Аватар удален",
-                          description: "Чтобы сделать новый, нужно будет снова загрузить фото.",
-                        });
+                      onClick={async () => {
+                        try {
+                          const res = await fetch(`${API_BASE}/api/client/delete-avatar`, {
+                            method: "POST",
+                            headers: getAuthHeaders(),
+                          });
+                          if (!res.ok) throw new Error(await res.text());
+                          dispatch({ type: "delete_avatar" });
+                          toast.push({
+                            title: "Аватар удален",
+                            description: "Покупка доступа сброшена. Чтобы сделать новый, нужно будет снова оплатить токенами.",
+                            variant: "success",
+                          });
+                          await fetchProfile();
+                        } catch (err) {
+                          toast.push({ title: "Ошибка удаления", description: String(err), variant: "danger" });
+                        }
                       }}
                     >
                       <Trash2 size={16} />
-                      Пересоздать
+                      Удалить и сбросить
                     </Button>
                   </>
                 )}
