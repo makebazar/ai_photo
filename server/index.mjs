@@ -562,7 +562,8 @@ async function main() {
   });
 
   app.post("/api/client/generate", async (req) => {
-    const userId = req.userId;
+    const auth = requireTelegramAuth(req);
+    const tgId = Number(auth.user.id);
     const b = req.body ?? {};
     const styleId = b.styleId ? String(b.styleId) : null;
     const modelId = b.modelId ? String(b.modelId) : null;
@@ -570,6 +571,9 @@ async function main() {
     if (!styleId) throw httpError(400, "styleId required");
 
     const res = await withTx(pool, async (db) => {
+      const user = await upsertUser(db, { tgId });
+      if (!user) throw httpError(404, "User not found");
+
       const cfg = await readConfig(db);
       
       // Find model cost or fallback to 1
@@ -579,18 +583,12 @@ async function main() {
       const totalCost = costPerPhoto * count;
 
       // 1. Check tokens
-      const { rows: uRows } = await db.query(
-        `select tokens_balance, avatar_access_expires_at from users where id = $1`,
-        [userId]
-      );
-      const user = uRows[0];
-      if (!user) throw httpError(404, "User not found");
       if (user.tokens_balance < totalCost) throw httpError(403, "Insufficient tokens");
 
       // 2. Spend tokens
       await db.query(
         `update users set tokens_balance = tokens_balance - $2 where id = $1`,
-        [userId, totalCost]
+        [user.id, totalCost]
       );
 
       // 3. Create session (simplified for now)
@@ -598,7 +596,7 @@ async function main() {
         `insert into style_sessions (user_id, mode, status)
          values ($1, 'pack', 'queued')
          returning id`,
-        [userId]
+        [user.id]
       );
 
       return { sessionId: sRows[0].id, spent: totalCost };
@@ -608,17 +606,16 @@ async function main() {
   });
 
   app.post("/api/client/unlock-avatar", async (req) => {
-    const userId = req.userId;
+    const auth = requireTelegramAuth(req);
+    const tgId = Number(auth.user.id);
+
     const res = await withTx(pool, async (db) => {
+      const user = await upsertUser(db, { tgId });
+      if (!user) throw httpError(404, "User not found");
+
       const cfg = await readConfig(db);
       const unlockCost = cfg.costs?.avatarTokens || 50;
 
-      const { rows: uRows } = await db.query(
-        `select tokens_balance from users where id = $1`,
-        [userId]
-      );
-      const user = uRows[0];
-      if (!user) throw httpError(404, "User not found");
       if (user.tokens_balance < unlockCost) throw httpError(403, "Insufficient tokens");
 
       await db.query(
@@ -626,7 +623,7 @@ async function main() {
          set tokens_balance = tokens_balance - $2,
              avatar_access_expires_at = now() + interval '100 years'
          where id = $1`,
-        [userId, unlockCost]
+        [user.id, unlockCost]
       );
 
       return { unlocked: true, spent: unlockCost };
@@ -690,12 +687,17 @@ async function main() {
   });
 
   app.post("/api/client/delete-avatar", async (req) => {
-    const userId = req.userId;
+    const auth = requireTelegramAuth(req);
+    const tgId = Number(auth.user.id);
+
     await withTx(pool, async (db) => {
+      const user = await upsertUser(db, { tgId });
+      if (!user) throw httpError(404, "User not found");
+
       // 1. Delete avatar record (and images via cascade if implemented, or manually)
-      await db.query(`delete from avatars where user_id = $1`, [userId]);
+      await db.query(`delete from avatars where user_id = $1`, [user.id]);
       // 2. Reset avatar access so user has to pay again
-      await db.query(`update users set avatar_access_expires_at = null where id = $1`, [userId]);
+      await db.query(`update users set avatar_access_expires_at = null where id = $1`, [user.id]);
     });
     return { ok: true };
   });
