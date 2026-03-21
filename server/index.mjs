@@ -782,16 +782,17 @@ async function main() {
           u.username,
           u.tg_id,
           p.created_at,
-          b.available_rub,
-          b.locked_rub,
-          b.paid_out_rub,
+          coalesce(b.available_rub, 0) as available_rub,
+          coalesce(b.locked_rub, 0) as locked_rub,
+          coalesce(b.paid_out_rub, 0) as paid_out_rub,
           (select count(*)::int from referral_clicks where partner_id = p.id) as clicks_count,
           (select count(*)::int from client_attribution where partner_id = p.id) as signups_count,
-          (select count(*)::int from orders where attribution_partner_id = p.id and status = 'paid') as paid_orders_count,
-          (select coalesce(sum(amount_rub), 0)::int from orders where attribution_partner_id = p.id and status = 'paid') as turnover_rub
+          (select count(*)::int from orders where (attribution_partner_id = p.id or id in (select order_id from commissions where partner_id = p.id)) and status = 'paid') as paid_orders_count,
+          (select coalesce(sum(amount_rub), 0)::int from orders where (attribution_partner_id = p.id or id in (select order_id from commissions where partner_id = p.id)) and status = 'paid') as turnover_rub
         from partners p
         join users u on u.id = p.user_id
         left join partner_balances b on b.partner_id = p.id
+
         order by p.created_at desc
         limit 300
         `,
