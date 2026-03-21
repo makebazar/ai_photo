@@ -164,7 +164,6 @@ export type AdminPlan = {
   tagline: string;
   priceRub: number;
   tokens: number;
-  photosCount: number;
   featured?: boolean;
   badge?: string;
   grantsPartner: boolean;

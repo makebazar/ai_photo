@@ -11,7 +11,6 @@ export type PublicPlan = {
   tagline: string;
   priceRub: number;
   tokens: number;
-  photosCount: number;
   featured?: boolean;
   badge?: string;
   grantsPartner: boolean;
@@ -47,7 +46,6 @@ const DEFAULT_PUBLIC_CONFIG: PublicConfig = {
       tagline: "Standard plan",
       priceRub: 2990,
       tokens: 30,
-      photosCount: 20,
       grantsPartner: false,
     },
     {
@@ -57,7 +55,6 @@ const DEFAULT_PUBLIC_CONFIG: PublicConfig = {
       tagline: "Pro plan",
       priceRub: 4990,
       tokens: 100,
-      photosCount: 30,
       grantsPartner: true,
       badge: "Выбор профи",
     },

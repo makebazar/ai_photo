@@ -7,7 +7,6 @@ const DEFAULT_CONFIG = {
       tagline: "Быстро, красиво и натурально.",
       priceRub: 499,
       tokens: 30,
-      photosCount: 20,
       grantsPartner: false,
     },
     {
@@ -17,7 +16,6 @@ const DEFAULT_CONFIG = {
       tagline: "Максимум деталей и “киношный” свет.",
       priceRub: 899,
       tokens: 100,
-      photosCount: 30,
       featured: true,
       badge: "Хит",
       grantsPartner: true,

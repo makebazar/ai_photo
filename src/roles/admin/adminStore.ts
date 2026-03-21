@@ -26,7 +26,6 @@ function createEmptyState(): AdminState {
           tagline: "Standard plan",
           priceRub: 2990,
           tokens: 30,
-          photosCount: 20,
           grantsPartner: false,
         },
         {
@@ -36,7 +35,6 @@ function createEmptyState(): AdminState {
           tagline: "Pro plan",
           priceRub: 4990,
           tokens: 100,
-          photosCount: 30,
           grantsPartner: true,
           badge: "Выбор профи",
         },

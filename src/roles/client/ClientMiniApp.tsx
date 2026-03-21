@@ -373,8 +373,7 @@ export function ClientMiniApp() {
       if (busy) return;
 
       setBusy("gen");
-      const activePlan = plans.find(p => p.id === state.plan) || plans[0];
-      const photos: MockPhoto[] = Array.from({ length: activePlan?.photosCount || 20 }).map((_, i) => ({
+      const photos: MockPhoto[] = Array.from({ length: 20 }).map((_, i) => ({
         id: `photo_${Date.now()}_${i}`,
         url: `https://via.placeholder.com/512x512?text=Photo+${i + 1}`,
         label: `Photo ${i + 1}`,
@@ -772,7 +771,7 @@ export function ClientMiniApp() {
                               </Badge>
                             ) : null}
                           </div>
-                          <div className="mt-1 text-xs text-white/65">{p.photosCount} фото • {p.tokens} токенов</div>
+                          <div className="mt-1 text-xs text-white/65">{p.tokens} токенов</div>
                         </div>
                         <div className="flex shrink-0 items-center gap-2 whitespace-nowrap">
                           <div className="text-sm font-semibold text-white/90">{rub(p.priceRub)}</div>
@@ -924,7 +923,7 @@ export function ClientMiniApp() {
                             </Badge>
                           ) : null}
                         </div>
-                        <div className="mt-1 text-xs text-white/65">{p.photosCount} фото • {p.tokens} токенов</div>
+                        <div className="mt-1 text-xs text-white/65">{p.tokens} токенов</div>
                       </div>
                       <div className="flex shrink-0 items-center gap-2 whitespace-nowrap">
                         <div className="text-sm font-semibold text-white/90">{rub(p.priceRub)}</div>

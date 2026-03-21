@@ -483,7 +483,6 @@ function ConfigSettings({ config, onSave }: { config: AdminConfig; onSave: (patc
       tagline: "Описание тарифа",
       priceRub: 1000,
       tokens: 50,
-      photosCount: 20,
       grantsPartner: false,
     };
     setLocal({
@@ -594,7 +593,7 @@ function ConfigSettings({ config, onSave }: { config: AdminConfig; onSave: (patc
                   />
                 </div>
 
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-xs text-white/50">Цена (₽)</label>
                     <input
@@ -610,15 +609,6 @@ function ConfigSettings({ config, onSave }: { config: AdminConfig; onSave: (patc
                       type="number"
                       value={plan.tokens}
                       onChange={(e) => handlePlanChange(plan.id, "tokens", parseInt(e.target.value) || 0)}
-                      className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonBlue/50"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-white/50">Кол-во фото</label>
-                    <input
-                      type="number"
-                      value={plan.photosCount}
-                      onChange={(e) => handlePlanChange(plan.id, "photosCount", parseInt(e.target.value) || 0)}
                       className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonBlue/50"
                     />
                   </div>
