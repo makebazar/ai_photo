@@ -22,7 +22,7 @@ import { useAdminStore, type AdminAction } from "./adminStore";
 import {
   getUsers, getOrders, getPartners, getWithdrawals,
   getAdminConfig, getPacks, getPromos, getSessions,
-  deleteUser,
+  deleteUser, adjustUserTokens,
   type AdminPack as ApiAdminPack,
   type AdminPromo as ApiAdminPromo,
 } from "../../lib/adminApi";
@@ -60,6 +60,19 @@ export function AdminDashboard() {
     setIsAuthenticated(false);
     setPassword("");
     toast.push({ title: "Выход из системы", variant: "success" });
+  };
+
+  const handleAdjustTokens = async (userId: string, delta: number) => {
+    try {
+      setLoading(true);
+      await adjustUserTokens(userId, delta);
+      toast.push({ title: "Баланс токенов обновлен", variant: "success" });
+      await refreshData();
+    } catch (err) {
+      toast.push({ title: "Ошибка", description: String(err), variant: "danger" });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleDeleteUser = async (userId: string) => {
@@ -135,6 +148,7 @@ export function AdminDashboard() {
             modelStatus: (u.avatar_status || "none") as any,
             astriaModelId: u.astria_model_id || "",
             isPartner: !!u.is_partner,
+            tokensBalance: u.tokens_balance || 0,
             sessions: [],
             spentRub: 0,
             ordersCount: 0,
@@ -320,7 +334,7 @@ export function AdminDashboard() {
 
         {/* Content */}
         {nav === "overview" && <Overview state={state} />}
-        {nav === "users" && <UsersList users={state.users} onDelete={handleDeleteUser} />}
+        {nav === "users" && <UsersList users={state.users} onDelete={handleDeleteUser} onAdjustTokens={handleAdjustTokens} />}
         {nav === "orders" && <OrdersList orders={state.orders} />}
         {nav === "partners" && <PartnersList partners={state.partners} />}
         {nav === "withdrawals" && <WithdrawalsList withdrawals={state.withdrawals} />}
@@ -366,7 +380,7 @@ function StatCard({ title, value }: { title: string; value: number }) {
   );
 }
 
-function UsersList({ users, onDelete }: { users: any[]; onDelete: (userId: string) => void }) {
+function UsersList({ users, onDelete, onAdjustTokens }: { users: any[]; onDelete: (userId: string) => void; onAdjustTokens: (userId: string, delta: number) => void }) {
   return (
     <Card>
       <div className="overflow-x-auto">
@@ -376,6 +390,7 @@ function UsersList({ users, onDelete }: { users: any[]; onDelete: (userId: strin
               <th className="p-3">ID</th>
               <th className="p-3">Username</th>
               <th className="p-3">Telegram ID</th>
+              <th className="p-3">Токены</th>
               <th className="p-3">Статус</th>
               <th className="p-3 text-right">Действия</th>
             </tr>
@@ -386,6 +401,25 @@ function UsersList({ users, onDelete }: { users: any[]; onDelete: (userId: strin
                 <td className="p-3 font-mono text-white/60">{u.userId.slice(0, 8)}</td>
                 <td className="p-3 text-white">{u.username || "—"}</td>
                 <td className="p-3 text-white/60">{u.telegramId || "—"}</td>
+                <td className="p-3">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-neonBlue">{u.tokensBalance}</span>
+                    <div className="flex flex-col gap-1">
+                      <button 
+                        onClick={() => onAdjustTokens(u.userId, 10)}
+                        className="rounded bg-white/5 px-1 text-[10px] hover:bg-white/10"
+                      >
+                        +10
+                      </button>
+                      <button 
+                        onClick={() => onAdjustTokens(u.userId, -10)}
+                        className="rounded bg-white/5 px-1 text-[10px] hover:bg-white/10"
+                      >
+                        -10
+                      </button>
+                    </div>
+                  </div>
+                </td>
                 <td className="p-3">
                   <span className={cn("rounded-full px-2 py-1 text-xs", u.modelStatus === "ready" ? "bg-green-500/20 text-green-400" : "bg-white/10 text-white/60")}>
                     {u.modelStatus}
@@ -404,7 +438,7 @@ function UsersList({ users, onDelete }: { users: any[]; onDelete: (userId: strin
             ))}
             {users.length === 0 && (
               <tr>
-                <td colSpan={5} className="p-8 text-center text-white/60">
+                <td colSpan={6} className="p-8 text-center text-white/60">
                   Нет пользователей
                 </td>
               </tr>

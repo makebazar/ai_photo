@@ -87,13 +87,36 @@ export async function createOrder(planId: PlanId, clientCode?: string): Promise<
 export async function payOrder(orderId: string): Promise<{ paidAt: string }> {
   // In production, this would redirect to payment provider
   // For now, simulate payment
-  const res = await fetch(`${API_BASE}/api/client/order/${orderId}/pay`, {
+  const res = await fetch(`${API_BASE}/api/orders/${orderId}/mark-paid`, {
     method: "POST",
     headers: getAuthHeaders(),
   });
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
-  return { paidAt: data.paidAt };
+  return { paidAt: data.paidAt || new Date().toISOString() };
+}
+
+export type ClientProfile = {
+  user: {
+    id: string;
+    tgId: number;
+    username: string | null;
+    tokensBalance: number;
+  };
+  partner: any | null;
+  attribution: any | null;
+  role: string;
+};
+
+export async function getProfile(): Promise<ClientProfile> {
+  const res = await fetch(`${API_BASE}/api/auth/login`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: JSON.stringify({}),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  return data;
 }
 
 // ============ Avatar / Training ============

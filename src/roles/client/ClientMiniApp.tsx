@@ -39,6 +39,8 @@ import {
 import {
   createOrder,
   listPacks,
+  payOrder,
+  getProfile,
   type StylePack,
 } from "../../lib/clientApi";
 
@@ -179,6 +181,20 @@ export function ClientMiniApp() {
 
   // Telegram auth
   const { isAuthenticated, user, isLoading: authLoading } = useTelegramAuth();
+
+  const fetchProfile = React.useCallback(async () => {
+    if (!isAuthenticated) return;
+    try {
+      const profile = await getProfile();
+      dispatch({ type: "set_profile", tokensBalance: profile.user.tokensBalance });
+    } catch (err) {
+      console.error("[Client] Failed to fetch profile:", err);
+    }
+  }, [isAuthenticated]);
+
+  React.useEffect(() => {
+    fetchProfile();
+  }, [fetchProfile]);
 
   const activeSession = React.useMemo(() => {
     if (!state.activeSessionId) return null;
@@ -399,12 +415,20 @@ export function ClientMiniApp() {
         paidAt: order.paid_at ? Date.parse(order.paid_at) : undefined 
       };
       dispatch({ type: "order_created", order: orderForDispatch });
-      // In production, redirect to payment provider
-      dispatch({ type: "order_paid", paidAt: Date.now() });
+      
+      // Simulate payment delay
+      await new Promise(r => setTimeout(r, 1500));
+      
+      const { paidAt } = await payOrder(order.id);
+      dispatch({ type: "order_paid", paidAt: Date.parse(paidAt) });
+      
+      // Refresh profile to get new tokens and partner status
+      await fetchProfile();
+      
       setBusy(null);
       toast.push({
         title: "Оплата прошла",
-        description: `Заказ: ${order.id}`,
+        description: `Заказ: ${order.id}. Вам начислены токены!`,
         variant: "success",
       });
       if (state.avatar.status === "ready") {
@@ -412,9 +436,9 @@ export function ClientMiniApp() {
       } else {
         go("upload");
       }
-    } catch {
+    } catch (err) {
       setBusy(null);
-      toast.push({ title: "Оплата не удалась", variant: "danger" });
+      toast.push({ title: "Оплата не удалась", description: String(err), variant: "danger" });
     }
   }
 
@@ -506,7 +530,13 @@ export function ClientMiniApp() {
       hideHeader
     >
       {/* Auth Indicator */}
-      <div className="fixed right-4 top-4 z-50">
+      <div className="fixed right-4 top-4 z-50 flex items-center gap-2">
+        {isAuthenticated && (
+          <Badge className="bg-neonViolet/20 text-neonViolet border-neonViolet/30">
+            <Sparkles size={12} className="mr-1" />
+            {state.tokensBalance}
+          </Badge>
+        )}
         {authLoading ? (
           <Badge className="bg-white/10 text-white/60">
             <Loader2 size={12} className="mr-1 animate-spin" />

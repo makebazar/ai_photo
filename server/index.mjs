@@ -20,7 +20,7 @@ async function upsertUser(db, { tgId, username }) {
     on conflict (tg_id) do update
       set username = excluded.username,
           last_seen_at = now()
-    returning id, tg_id, username
+    returning id, tg_id, username, tokens_balance
     `,
     [tgId ?? null, username ?? null],
   );
@@ -67,6 +67,16 @@ async function ensurePartner(db, { userId, teamCode }) {
     const parent = await resolvePartnerByCode(db, teamCode);
     if (!parent || parent.status !== "active") throw httpError(400, "Invalid team referral code");
     parentPartnerId = parent.id;
+  } else {
+    // If no team code, try to find parent from client attribution
+    const { rows: attr } = await db.query(
+      `select partner_id from client_attribution where user_id = $1`,
+      [userId],
+    );
+    if (attr[0]) {
+      parentPartnerId = attr[0].partner_id;
+      console.log(`[ensurePartner] Found parent partner ${parentPartnerId} from client_attribution for user ${userId}`);
+    }
   }
 
   // First insert to get public_id (identity), then update codes using public_id.
@@ -596,7 +606,7 @@ async function main() {
     const rows = await withTx(pool, async (db) => {
       const { rows } = await db.query(
         `
-        select u.id, u.tg_id, u.username, u.created_at, u.last_seen_at,
+        select u.id, u.tg_id, u.username, u.created_at, u.last_seen_at, u.tokens_balance,
                a.status as avatar_status, a.astria_model_id, a.last_trained_at,
                (select count(*) from partners p where p.user_id = u.id) > 0 as is_partner
         from users u
@@ -609,6 +619,22 @@ async function main() {
     });
     console.log("[Admin] Users loaded:", rows.length);
     return { ok: true, users: rows };
+  });
+
+  app.post("/api/admin/users/:id/adjust-tokens", async (req) => {
+    requireAdmin(req);
+    const id = String(req.params.id);
+    const b = req.body ?? {};
+    const delta = Math.round(Number(b.delta || 0));
+    if (!Number.isFinite(delta) || delta === 0) throw httpError(400, "delta is required");
+
+    await withTx(pool, async (db) => {
+      await db.query(
+        `update users set tokens_balance = greatest(0, tokens_balance + $2) where id = $1`,
+        [id, delta],
+      );
+    });
+    return { ok: true };
   });
 
   app.delete("/api/admin/users/:id", async (req) => {
@@ -861,6 +887,7 @@ async function main() {
           id: user.id,
           tgId: user.tg_id,
           username: user.username,
+          tokensBalance: user.tokens_balance,
         },
         partner: partner ? {
           id: partner.id,
@@ -1063,19 +1090,42 @@ async function main() {
     return { ok: true, sessions: res };
   });
 
+async function handleOrderPaid(db, orderId) {
+  // 1. Mark order as paid if not already
+  const { rows } = await db.query(
+    `update orders set status = 'paid', paid_at = coalesce(paid_at, now()) where id = $1 and status <> 'paid' returning id, user_id, plan_id`,
+    [orderId],
+  );
+  
+  // Even if already paid, we still try to run allocation and other logic (idempotent)
+  const order = rows[0] || (await db.query(`select id, user_id, plan_id from orders where id = $1`, [orderId])).rows[0];
+  if (!order) return null;
+
+  // 2. Allocate commissions
+  const alloc = await allocateCommissionsForOrder(db, orderId);
+
+  // 3. Grant tokens based on plan
+  // Pro plan: 100 tokens, Standard: 30 tokens (example values)
+  const tokens = order.plan_id === 'pro' ? 100 : 30;
+  await db.query(
+    `update users set tokens_balance = tokens_balance + $2 where id = $1`,
+    [order.user_id, tokens]
+  );
+
+  // 4. If 'pro' plan, ensure user is a partner
+  if (order.plan_id === 'pro') {
+    console.log(`[handleOrderPaid] Order ${orderId} is 'pro' plan. Ensuring partner for user ${order.user_id}`);
+    await ensurePartner(db, { userId: order.user_id });
+  }
+
+  return alloc;
+}
+
   // Simulate payment webhook: mark paid + allocate commissions.
   app.post("/api/orders/:id/mark-paid", async (req) => {
     const orderId = String(req.params.id);
     const res = await withTx(pool, async (db) => {
-      const { rows } = await db.query(
-        `update orders set status = 'paid', paid_at = now() where id = $1 and status <> 'paid' returning id`,
-        [orderId],
-      );
-      if (!rows.length) {
-        // Already paid or not found; still try allocating (idempotent)
-      }
-      const alloc = await allocateCommissionsForOrder(db, orderId);
-      return alloc;
+      return await handleOrderPaid(db, orderId);
     });
     return { ok: true, result: res };
   });
@@ -1099,11 +1149,7 @@ async function main() {
       );
 
       if (status === "paid") {
-        await db.query(
-          `update orders set status = 'paid', paid_at = coalesce(paid_at, now()) where id = $1`,
-          [orderId],
-        );
-        await allocateCommissionsForOrder(db, orderId);
+        return await handleOrderPaid(db, orderId);
       }
 
       if (status === "refunded") {

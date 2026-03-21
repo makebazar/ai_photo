@@ -20,6 +20,7 @@ export type UserModelRow = {
   astriaModelId?: string;
   lastTrainedAt?: number | null;
   isPartner?: boolean;
+  tokensBalance: number;
   sessions: string[];
   spentRub: number;
   ordersCount: number;

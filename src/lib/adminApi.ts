@@ -42,6 +42,7 @@ export type AdminUser = {
   astria_model_id?: string;
   last_trained_at?: string | null;
   is_partner?: boolean;
+  tokens_balance: number;
 };
 
 export async function getUsers(): Promise<AdminUser[]> {
@@ -51,6 +52,13 @@ export async function getUsers(): Promise<AdminUser[]> {
 
 export async function deleteUser(userId: string): Promise<void> {
   await fetchAdmin(`/api/admin/users/${userId}`, { method: "DELETE" });
+}
+
+export async function adjustUserTokens(userId: string, delta: number): Promise<void> {
+  await fetchAdmin(`/api/admin/users/${userId}/adjust-tokens`, {
+    method: "POST",
+    body: JSON.stringify({ delta }),
+  });
 }
 
 // ============ Orders ============
