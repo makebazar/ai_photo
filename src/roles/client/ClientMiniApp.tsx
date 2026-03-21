@@ -46,7 +46,10 @@ import { cn } from "../../lib/cn";
 import { usePublicConfig, fetchPublicConfig } from "../../lib/publicConfig";
 import { readLocalStorage, writeLocalStorage } from "../../lib/storage";
 import { useTelegramAuth } from "../../lib/useTelegramAuth";
+import { getStartParam } from "../../lib/tg";
+import { trackReferralClick } from "../../lib/referralApi";
 import { Lightbox } from "./Lightbox";
+
 import {
   clientReducer,
   initialClientState,
@@ -194,7 +197,19 @@ export function ClientMiniApp() {
 
   const { isAuthenticated, user, isLoading: authLoading } = useTelegramAuth();
 
+  // Track referral click on mount if start_param exists
+  React.useEffect(() => {
+    const startParam = getStartParam();
+    if (startParam) {
+      trackReferralClick({ code: startParam }).catch((err: any) => {
+        console.error("[Referral] Failed to track click:", err);
+      });
+    }
+
+  }, []);
+
   const fetchProfile = React.useCallback(async () => {
+
     try {
       await fetchPublicConfig();
     } catch (err) {
@@ -639,7 +654,7 @@ export function ClientMiniApp() {
                 </Card>
               )}
 
-              {state.refCode && (
+              {state.refLink && (
                 <Card className="relative overflow-hidden p-4 border-white/5 bg-white/5">
                   <div className="flex items-center justify-between gap-4">
                     <div className="flex-1">
@@ -647,20 +662,18 @@ export function ClientMiniApp() {
                       <div className="flex items-center gap-2">
                         <Link size={14} className="text-neonBlue" />
                         <div className="text-xs font-medium text-white/80 truncate max-w-[180px]">
-                          {`t.me/${import.meta.env.VITE_BOT_NAME || 'bot'}/app?startapp=${state.refCode}`}
+                          {state.refLink.replace(/^https?:\/\//, '')}
                         </div>
                       </div>
+
                     </div>
                     <Button 
                       size="sm" 
                       variant="ghost" 
                       className="h-9 w-9 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 hover:text-white"
-
                       onClick={() => {
-                        const botName = import.meta.env.VITE_BOT_NAME || 'bot';
-                        const url = `https://t.me/${botName}/app?startapp=${state.refCode}`;
+                        const url = state.refLink!;
                         navigator.clipboard.writeText(url);
-                        // Using window.Telegram.WebApp.showPopup or just an alert for simplicity if toast is not available
                         if ((window as any).Telegram?.WebApp?.showAlert) {
                           (window as any).Telegram.WebApp.showAlert("Ссылка скопирована!");
                         } else {
@@ -676,6 +689,7 @@ export function ClientMiniApp() {
                   </p>
                 </Card>
               )}
+
 
 
 

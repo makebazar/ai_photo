@@ -62,9 +62,18 @@ export function parseReferralCode(code) {
   
   // Legacy format: client_publicId_token
   const m = /^(client|team)_(\d+)_([A-Za-z0-9_-]+)$/.exec(raw);
-  if (!m) return null;
-  return { kind: m[1], publicId: Number(m[2]), token: m[3] };
+  if (m) {
+    return { kind: m[1], publicId: Number(m[2]), token: m[3] };
+  }
+
+  // Fallback: treat as client code if no prefix
+  if (raw.length >= 4) {
+    return { kind: 'client', code: raw, fullCode: raw };
+  }
+
+  return null;
 }
+
 
 export function computeCommissionAmount(amountRub, percent) {
   const a = Number(amountRub ?? 0);
@@ -159,8 +168,28 @@ export async function resolveReferralCode(db, code, opts = {}) {
     };
   }
 
-  // Try to find by user code (e.g. client_u123456 or just u123456)
+  // Try to find by personal_ref_code in users table
+  const { rows: uRefRows } = await db.query(
+    `select p.id as partner_id, u.id as user_id 
+     from users u 
+     left join partners p on p.user_id = u.id 
+     where u.personal_ref_code = $1`,
+    [parsed.fullCode || code]
+  );
+  
+  if (uRefRows[0]) {
+    return {
+      partnerId: uRefRows[0].partner_id || null,
+      userId: uRefRows[0].user_id,
+      kind: parsed.kind || 'client',
+      code: parsed.fullCode || code,
+      linkId: null,
+    };
+  }
+
+  // Try to find by legacy user code (e.g. client_u123456 or just u123456)
   const userMatch = /u(\d+)$/.exec(parsed.fullCode || code);
+
   if (userMatch) {
     const tgId = Number(userMatch[1]);
     const { rows: uRows } = await db.query(

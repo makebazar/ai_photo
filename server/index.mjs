@@ -25,19 +25,43 @@ async function checkAstriaModelStatus(modelId) {
 }
 
 async function upsertUser(db, { tgId, username }) {
+  // Check if user exists first to preserve existing ref code
+  const { rows: existing } = await db.query(`select personal_ref_code from users where tg_id = $1`, [tgId]);
+  
+  let refCode = existing[0]?.personal_ref_code;
+  if (!refCode) {
+    // Generate a unique 6-char code
+    let attempts = 0;
+    while (attempts < 10) {
+      const candidate = Math.random().toString(36).substring(2, 8).toLowerCase();
+      const { rows: check } = await db.query(
+        `select 1 from users where personal_ref_code = $1 
+         union all 
+         select 1 from partners where client_code = $1 or team_code = $1`, 
+        [candidate]
+      );
+      if (check.length === 0) {
+        refCode = candidate;
+        break;
+      }
+      attempts++;
+    }
+  }
+
   const { rows } = await db.query(
     `
-    insert into users (tg_id, username, last_seen_at)
-    values ($1, $2, now())
+    insert into users (tg_id, username, last_seen_at, personal_ref_code)
+    values ($1, $2, now(), $3)
     on conflict (tg_id) do update
       set username = excluded.username,
           last_seen_at = now()
-    returning id, tg_id, username, tokens_balance, avatar_access_expires_at
+    returning id, tg_id, username, tokens_balance, avatar_access_expires_at, personal_ref_code
     `,
-    [tgId ?? null, username ?? null],
+    [tgId ?? null, username ?? null, refCode || null],
   );
   return rows[0];
 }
+
 
 // Helper for generating Telegram links
 function makeTgLink(botName, code, kind) {
@@ -49,10 +73,10 @@ function makeTgLink(botName, code, kind) {
   if (appName) {
     return `https://t.me/${name}/${appName}?startapp=${code}`;
   }
-  // If no app name, use the direct startapp parameter on the bot link
-  // This works if the Mini App is the "Main Mini App" of the bot
-  return `https://t.me/${name}?startapp=${code}`;
+  // Fallback: use direct bot link with start parameter
+  return `https://t.me/${name}?start=${code}`;
 }
+
 
 
 async function resolvePartnerByCode(db, code) {
@@ -1047,9 +1071,10 @@ async function main() {
           username: user.username,
           tokensBalance: user.tokens_balance,
           avatarAccessExpiresAt,
-          refCode: `client_u${user.tg_id}`,
-          refLink: makeTgLink(null, `client_u${user.tg_id}`, 'client'),
+          refCode: user.personal_ref_code,
+          refLink: makeTgLink(null, user.personal_ref_code, 'client'),
         },
+
 
 
         partner: partner ? {
@@ -1726,33 +1751,28 @@ async function handleOrderPaid(db, orderId) {
     }
 
     const result = await withTx(pool, async (db) => {
-      if (linkId) {
-        // Use the click tracking function directly
-        await trackReferralClick(db, {
-          linkId,
-          utm: utm,
-        });
-        return { linkId };
-      } else {
-        const { rows } = await db.query(`select id, partner_id, kind from referral_links where code = $1`, [code]);
-        if (!rows[0]) {
-          throw httpError(404, "Link not found");
-        }
-        
-        await trackReferralClick(db, {
-          linkId: rows[0].id,
-          partnerId: rows[0].partner_id,
-          kind: rows[0].kind,
-          code: code,
-          utm: utm,
-        });
-
-        return { linkId: rows[0].id };
+      // Use resolveReferralCode to find out what this link/code is
+      const resolved = await resolveReferralCode(db, code, { linkId });
+      
+      if (!resolved) {
+        throw httpError(404, "Link not found");
       }
+
+      const { clickId } = await trackReferralClick(db, {
+        linkId: resolved.linkId || null,
+        partnerId: resolved.partnerId || null,
+        userId: resolved.userId || null,
+        kind: resolved.kind,
+        code: resolved.code,
+        utm: utm,
+      });
+
+      return { linkId: resolved.linkId, clickId };
     });
 
     return { ok: true, ...result };
   });
+
 
   // Get partner statistics
   app.get("/api/partner/stats", async (req) => {
