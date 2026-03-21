@@ -110,17 +110,14 @@ export function PartnerMiniApp() {
   const mediaPromos = React.useMemo(() => promoItems.filter((p) => p.kind !== "text"), [promoItems]);
 
   const teamSummary = React.useMemo(() => {
-    if (!downline) return { directClients: 0, level2Clients: 0, paidClients: 0, earningsRub: 0 };
-    const l1 = downline.level1 || [];
-    const l2 = l1.flatMap(p => p.children || []);
-    const totalEarnings = l1.reduce((sum, p) => sum + (p.revenue_rub || 0), 0);
+    if (!stats) return { directClients: 0, level2Clients: 0, paidClients: 0, earningsRub: 0 };
     return {
-      directClients: l1.reduce((sum, p) => sum + (p.clients_count || 0), 0),
-      level2Clients: l2.reduce((sum, p) => sum + (p.clients_count || 0), 0),
-      paidClients: clients.filter(c => c.orders_count > 0).length,
-      earningsRub: totalEarnings,
+      directClients: stats.direct_clients || 0,
+      level2Clients: stats.level2_clients || 0,
+      paidClients: stats.total_team_paid_clients || 0,
+      earningsRub: stats.team_earnings_rub || 0,
     };
-  }, [downline, clients]);
+  }, [stats]);
 
   return (
     <PhoneShell title="Партнерский кабинет" hideHeader>
@@ -207,19 +204,19 @@ export function PartnerMiniApp() {
             <Card className="p-4">
               <div className="text-xs text-white/60">Переходов</div>
               <div className="mt-1 text-lg font-semibold text-white/95">
-                {stats?.direct_clients || 0}
+                {stats?.total_clicks || 0}
               </div>
             </Card>
             <Card className="p-4">
               <div className="text-xs text-white/60">Регистраций</div>
               <div className="mt-1 text-lg font-semibold text-white/95">
-                {teamSummary.directClients}
+                {stats?.direct_clients || 0}
               </div>
             </Card>
             <Card className="p-4">
               <div className="text-xs text-white/60">Оплат</div>
               <div className="mt-1 text-lg font-semibold text-white/95">
-                {teamSummary.paidClients}
+                {stats?.direct_paid_orders || 0}
               </div>
             </Card>
           </div>

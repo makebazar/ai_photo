@@ -49,12 +49,16 @@ export type PartnerStats = {
   user_id: string;
   parent_partner_id: string | null;
   status: string;
+  total_clicks: number;
   direct_clients: number;
   direct_partners: number;
   level2_partners: number;
+  level2_clients: number;
   direct_paid_orders: number;
+  total_team_paid_clients: number;
   direct_revenue_rub: number;
   total_earnings_rub: number;
+  team_earnings_rub: number;
   pending_earnings_rub: number;
   available_balance_rub: number;
   last_client_order_at: string | null;
