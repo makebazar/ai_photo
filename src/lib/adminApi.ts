@@ -75,7 +75,14 @@ export type AdminOrder = {
   tg_id?: number | null;
   partner_public_id?: string | null;
   attribution_kind?: string | null;
+  commission_chain?: Array<{
+    username: string;
+    level: number;
+    amount: number;
+    percent: number;
+  }> | null;
 };
+
 
 export async function getOrders(): Promise<AdminOrder[]> {
   const data = await fetchAdmin<{ orders: AdminOrder[] }>("/api/admin/orders");
@@ -108,7 +115,9 @@ export type AdminPartner = {
   signups_count?: number;
   paid_orders_count?: number;
   turnover_rub?: number;
+  parent_username?: string | null;
 };
+
 
 export async function getPartners(): Promise<AdminPartner[]> {
   const data = await fetchAdmin<{ partners: AdminPartner[] }>("/api/admin/partners");

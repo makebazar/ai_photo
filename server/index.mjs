@@ -790,10 +790,12 @@ async function main() {
           (select count(*)::int from referral_clicks where partner_id = p.id) as clicks_count,
           (select count(*)::int from client_attribution where partner_id = p.id) as signups_count,
           (select count(*)::int from orders where (attribution_partner_id = p.id or id in (select order_id from commissions where partner_id = p.id)) and status = 'paid') as paid_orders_count,
-          (select coalesce(sum(amount_rub), 0)::int from orders where (attribution_partner_id = p.id or id in (select order_id from commissions where partner_id = p.id)) and status = 'paid') as turnover_rub
+          (select coalesce(sum(amount_rub), 0)::int from orders where (attribution_partner_id = p.id or id in (select order_id from commissions where partner_id = p.id)) and status = 'paid') as turnover_rub,
+          (select u2.username from partners p2 join users u2 on u2.id = p2.user_id where p2.id = p.parent_partner_id) as parent_username
         from partners p
         join users u on u.id = p.user_id
         left join partner_balances b on b.partner_id = p.id
+
 
         order by p.created_at desc
         limit 300
@@ -857,10 +859,23 @@ async function main() {
         `
         select o.id, o.plan_id, o.amount_rub, o.status, o.created_at, o.paid_at,
                u.username, u.tg_id,
-               p.public_id as partner_public_id, o.attribution_kind
+               p.public_id as partner_public_id, o.attribution_kind,
+               (
+                 select jsonb_agg(jsonb_build_object(
+                   'username', u2.username,
+                   'level', c.level,
+                   'amount', c.amount_rub,
+                   'percent', c.percent
+                 ))
+                 from commissions c
+                 join partners p2 on p2.id = c.partner_id
+                 join users u2 on u2.id = p2.user_id
+                 where c.order_id = o.id
+               ) as commission_chain
         from orders o
         join users u on u.id = o.user_id
         left join partners p on p.id = o.attribution_partner_id
+
         order by o.created_at desc
         limit 300
         `,

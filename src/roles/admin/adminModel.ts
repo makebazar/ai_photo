@@ -63,7 +63,14 @@ export type AdminOrderRow = {
   updatedAt?: number;
   partnerPublicId?: string;
   attributionKind?: string;
+  commissionChain?: Array<{
+    username: string;
+    level: number;
+    amount: number;
+    percent: number;
+  }>;
   imagesPlanned: number;
+
   flags: string[];
 };
 
@@ -76,7 +83,9 @@ export type AdminPartner = {
   clientCode: string;
   teamCode: string;
   parentPartnerId: string;
+  parentUsername?: string;
   joinedAt: number;
+
   lastActivityAt: number;
   balances: {
     availableRub: number;

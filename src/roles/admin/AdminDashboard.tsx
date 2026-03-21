@@ -319,11 +319,14 @@ export function AdminDashboard() {
             packTitle: "",
             amountRub: o.amount_rub,
             status: o.status === "paid" ? "Оплачен" : "Не оплачен",
-            createdAt: Date.now(),
+            createdAt: Date.parse(o.created_at),
             paidAt: o.paid_at ? Date.parse(o.paid_at) : undefined,
+
             partnerPublicId: o.partner_public_id || "",
             attributionKind: o.attribution_kind || "",
+            commissionChain: o.commission_chain || [],
             imagesPlanned: 20,
+
             updatedAt: Date.now(),
             flags: [],
           })),
@@ -336,7 +339,9 @@ export function AdminDashboard() {
             clientCode: p.client_code,
             teamCode: p.team_code,
             parentPartnerId: p.parent_partner_id || "",
+            parentUsername: p.parent_username || "",
             joinedAt: Date.parse(p.created_at),
+
             lastActivityAt: Date.now(),
             balances: {
               availableRub: p.available_rub,
@@ -994,15 +999,46 @@ function OrdersList({ orders }: { orders: any[] }) {
             <tr>
               <th className="p-3">ID</th>
               <th className="p-3">Сумма</th>
+              <th className="p-3">Распределение (MLM)</th>
               <th className="p-3">Статус</th>
+
               <th className="p-3">Дата</th>
             </tr>
           </thead>
           <tbody>
             {orders.map((o) => (
               <tr key={o.orderId} className="border-b border-white/5">
-                <td className="p-3 font-mono text-white/60">{o.orderId.slice(0, 8)}</td>
+                <td className="p-3 font-mono text-white/60">
+                  <div className="flex flex-col">
+                    <span>{o.orderId.slice(0, 8)}</span>
+                    <span className="text-[10px] text-white/30 uppercase tracking-tighter">
+                      {o.attributionKind === 'team' ? 'Командная' : 'Прямая'}
+                    </span>
+                  </div>
+                </td>
+
                 <td className="p-3 text-white">{o.amountRub} ₽</td>
+                <td className="p-3">
+                  <div className="flex flex-col gap-1">
+                    {o.commissionChain && o.commissionChain.length > 0 ? (
+                      o.commissionChain.sort((a: any, b: any) => a.level - b.level).map((c: any, idx: number) => (
+                        <div key={idx} className="flex items-center gap-1.5 whitespace-nowrap text-[10px]">
+                          <span className={cn(
+                            "px-1 rounded-sm font-bold uppercase",
+                            c.level === 0 ? "bg-neonBlue/20 text-neonBlue" : "bg-neonViolet/20 text-neonViolet"
+                          )}>
+                            L{c.level}
+                          </span>
+                          <span className="text-white/70">@{c.username}</span>
+                          <span className="text-white/40">({c.percent}%)</span>
+                          <span className="text-white font-medium ml-auto">{c.amount} ₽</span>
+                        </div>
+                      ))
+                    ) : (
+                      <span className="text-[10px] text-white/20 italic">Нет начислений</span>
+                    )}
+                  </div>
+                </td>
                 <td className="p-3">
                   <span className={cn("rounded-full px-2 py-1 text-xs", o.status === "Оплачен" ? "bg-green-500/20 text-green-400" : "bg-yellow-500/20 text-yellow-400")}>
                     {o.status}
@@ -1013,11 +1049,12 @@ function OrdersList({ orders }: { orders: any[] }) {
             ))}
             {orders.length === 0 && (
               <tr>
-                <td colSpan={4} className="p-8 text-center text-white/60">
+                <td colSpan={5} className="p-8 text-center text-white/60">
                   Нет заказов
                 </td>
               </tr>
             )}
+
           </tbody>
         </table>
       </div>
@@ -1034,7 +1071,9 @@ function PartnersList({ partners }: { partners: any[] }) {
             <tr>
               <th className="p-3">ID</th>
               <th className="p-3">Username</th>
+              <th className="p-3">Пригласитель (Upline)</th>
               <th className="p-3">Баланс (Доступно / Холд)</th>
+
 
               <th className="p-3">Статус</th>
             </tr>
@@ -1043,7 +1082,18 @@ function PartnersList({ partners }: { partners: any[] }) {
             {partners.map((p) => (
               <tr key={p.partnerId} className="border-b border-white/5">
                 <td className="p-3 font-mono text-white/60">{p.partnerId}</td>
-                <td className="p-3 text-white">{p.username || "—"}</td>
+                <td className="p-3 text-white">@{p.username || "—"}</td>
+                <td className="p-3">
+                  {p.parentUsername ? (
+                    <div className="flex items-center gap-1.5 text-neonViolet font-medium">
+                      <ArrowRight size={12} className="opacity-50" />
+                      @{p.parentUsername}
+                    </div>
+                  ) : (
+                    <span className="text-white/20">—</span>
+                  )}
+                </td>
+
                 <td className="p-3">
                   <div className="flex flex-col">
                     <span className="text-white font-medium">{p.balances.availableRub} ₽</span>
@@ -1062,11 +1112,12 @@ function PartnersList({ partners }: { partners: any[] }) {
             ))}
             {partners.length === 0 && (
               <tr>
-                <td colSpan={4} className="p-8 text-center text-white/60">
+                <td colSpan={5} className="p-8 text-center text-white/60">
                   Нет партнёров
                 </td>
               </tr>
             )}
+
           </tbody>
         </table>
       </div>
