@@ -286,98 +286,91 @@ export async function allocateCommissionsForOrder(db, orderId) {
   const holdDays = cfg.mlm?.holdDays ?? 14;
   const unlockAt = new Date(Date.now() + holdDays * 24 * 60 * 60 * 1000);
 
-  // Determine the "direct" partner (who invited the paying client).
+  // 1. Determine the actual inviter (the person who shared the link)
+  let inviterUserId = null;
   let directPartnerId = order.attribution_partner_id;
   let directLinkId = null;
-  let referrerUserId = null;
   let directClickId = null;
-  
-  if (!directPartnerId) {
-    // Check for link-based attribution
-    const { rows: clickRows } = await db.query(
-      `select id, partner_id, link_id, referrer_user_id from referral_clicks 
-       where user_id = $1 and kind = 'client' 
-       order by clicked_at desc limit 1`,
-      [order.user_id]
-    );
-    if (clickRows[0]) {
-      directClickId = clickRows[0].id;
-      directPartnerId = clickRows[0].partner_id;
-      directLinkId = clickRows[0].link_id;
-      referrerUserId = clickRows[0].referrer_user_id;
 
-      // If partner_id is missing but we have referrer_user_id, check if they are a partner now
-      // This handles the case where someone shared a link before becoming a partner
-      if (!directPartnerId && referrerUserId) {
-        const { rows: pRows } = await db.query(
-          `select id from partners where user_id = $1 and status = 'active'`,
-          [referrerUserId]
-        );
-        if (pRows[0]) {
-          directPartnerId = pRows[0].id;
-          console.log(`[MLM] Resolved partner ${directPartnerId} from referrer_user_id ${referrerUserId} at allocation time`);
-        }
-      }
-    }
+  // Try latest click tracking
+  const { rows: clickRows } = await db.query(
+    `select id, partner_id, link_id, referrer_user_id from referral_clicks 
+     where user_id = $1 and kind = 'client' 
+     order by clicked_at desc limit 1`,
+    [order.user_id]
+  );
+
+  if (clickRows[0]) {
+    directClickId = clickRows[0].id;
+    directLinkId = clickRows[0].link_id;
+    inviterUserId = clickRows[0].referrer_user_id;
+    if (!directPartnerId) directPartnerId = clickRows[0].partner_id;
   }
 
-  
+  // Fallback to client_attribution if no inviter found yet
+  if (!inviterUserId && !directPartnerId) {
+    const { rows: attrRows } = await db.query(
+      `select partner_id from client_attribution where user_id = $1`,
+      [order.user_id]
+    );
+    directPartnerId = attrRows[0]?.partner_id ?? null;
+  }
+
   const isUuid = (str) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
   const ownerId = isUuid(cfg.mlm?.ownerPartnerId) ? cfg.mlm.ownerPartnerId : null;
 
   let payouts = [];
-  const partnerPct = cfg.commissionsPct.partner || 20;
-  const parentPct = cfg.commissionsPct.parent || 10;
+  const directPct = cfg.commissionsPct.partner || 20;
+  const teamPct = cfg.commissionsPct.parent || 10;
 
-  if (!directPartnerId) {
-    const { rows: attrRows } = await db.query(`select partner_id from client_attribution where user_id = $1`, [
-      order.user_id,
-    ]);
-    directPartnerId = attrRows?.[0]?.partner_id ?? null;
-  }
-  
-  if (directPartnerId) {
-    // Resolve direct partner status.
-    const { rows: partnerRows } = await db.query(
-      `select p.id, p.parent_partner_id from partners p where p.id = $1`, 
-      [directPartnerId]
+  // 2. Resolve Payouts based on Hierarchy
+  let firstPartnerId = null;
+  let secondPartnerId = null;
+
+  if (inviterUserId) {
+    // Check if the actual inviter is an active partner
+    const { rows: invPartnerRows } = await db.query(
+      `select id, parent_partner_id from partners where user_id = $1 and status = 'active'`,
+      [inviterUserId]
     );
-    const directPartner = partnerRows[0];
-    
-    if (directPartner) {
-      payouts.push({
-        partnerId: directPartner.id,
-        level: 0,
-        percent: partnerPct,
-        linkId: directLinkId,
-      });
+    const invPartner = invPartnerRows[0];
+
+    if (invPartner) {
+      // CASE: Partner invited Friend directly
+      firstPartnerId = invPartner.id;
+      secondPartnerId = invPartner.parent_partner_id || ownerId;
+    } else {
+      // CASE: Client (non-partner) invited Friend
+      const { rows: clientAttrRows } = await db.query(
+        `select partner_id from client_attribution where user_id = $1`,
+        [inviterUserId]
+      );
+      const bossPartnerId = clientAttrRows[0]?.partner_id || directPartnerId;
       
-      const uplineId = directPartner.parent_partner_id ?? ownerId;
-      if (uplineId) {
-        payouts.push({
-          partnerId: uplineId,
-          level: 1,
-          percent: parentPct,
-          linkId: null,
-        });
+      if (bossPartnerId) {
+        // Partner gets BOTH (Pass-up)
+        firstPartnerId = bossPartnerId;
+        secondPartnerId = bossPartnerId;
+      } else {
+        secondPartnerId = ownerId;
       }
     }
-  } else if (ownerId) {
-    // No direct partner -> only the owner gets the "platform" share (10%)
-    payouts.push({
-      partnerId: ownerId,
-      level: 1,
-      percent: parentPct,
-      linkId: null,
-    });
+  } else if (directPartnerId) {
+    firstPartnerId = directPartnerId;
+    const { rows: pRows } = await db.query(`select parent_partner_id from partners where id = $1`, [directPartnerId]);
+    secondPartnerId = pRows[0]?.parent_partner_id || ownerId;
+  } else {
+    secondPartnerId = ownerId;
+  }
+
+  if (firstPartnerId) {
+    payouts.push({ partnerId: firstPartnerId, level: 0, percent: directPct, linkId: directLinkId });
+  }
+  if (secondPartnerId) {
+    payouts.push({ partnerId: secondPartnerId, level: 1, percent: teamPct, linkId: null });
   }
 
   if (payouts.length === 0) return { ok: true, commissions: 0 };
-
-
-
-
-
 
   let created = 0;
   let partnerDirectEarnings = 0;
@@ -387,57 +380,42 @@ export async function allocateCommissionsForOrder(db, orderId) {
     if (amountRub <= 0) continue;
 
     const { rows: insertRows } = await db.query(
-      `
-      insert into commissions (order_id, partner_id, level, percent, amount_rub, status, unlock_at)
-      values ($1, $2, $3, $4, $5, 'locked', $6)
-      on conflict (order_id, partner_id, level) do nothing
-      returning id
-      `,
+      `insert into commissions (order_id, partner_id, level, percent, amount_rub, status, unlock_at)
+       values ($1, $2, $3, $4, $5, 'locked', $6)
+       on conflict (order_id, partner_id, level) do nothing
+       returning id`,
       [order.id, p.partnerId, p.level, p.percent, amountRub, unlockAt],
     );
 
     if (!insertRows.length) continue;
     created += 1;
-    
-    // If this is the direct partner (level 0), track their earnings for the link stats
-    if (p.level === 0) {
-      partnerDirectEarnings = amountRub;
-    }
-
+    if (p.level === 0) partnerDirectEarnings = amountRub;
 
     await db.query(
       `insert into partner_ledger (partner_id, entry_type, amount_rub, order_id, meta)
        values ($1, $2, $3, $4, $5::jsonb)`,
-      [p.partnerId, p.level === 0 ? "commission.direct" : p.level === 1 ? "commission.team_l1" : "commission.team_l2", amountRub, order.id, JSON.stringify({ percent: p.percent, level: p.level, status: 'locked', unlock_at: unlockAt })],
+      [p.partnerId, p.level === 0 ? "commission.direct" : "commission.team_l1", amountRub, order.id, 
+       JSON.stringify({ percent: p.percent, level: p.level, status: 'locked', unlock_at: unlockAt })],
     );
 
-    // Recalculate partner balance (safer than running total)
     await db.query(`select recalculate_partner_balance($1)`, [p.partnerId]);
-    
-    // Update partner stats (rank, total earnings, etc)
     await db.query(`select update_partner_stats($1)`, [p.partnerId]);
 
-
-    // Send notification
-    const emoji = p.level === 0 ? "💰" : "🤝";
-    const levelText = p.level === 0 ? "Прямая продажа" : `Командная продажа (L${p.level})`;
-    
-    // Check if this was a Pass-up (referrer was not a partner)
-    // Only record if the referrer is DIFFERENT from the partner who got the commission
     let extraNote = "";
-    if (p.level === 0 && referrerUserId && referrerUserId !== p.partnerId) {
-      const referralAmount = computeCommissionAmount(order.amount_rub, partnerPct);
+    if (p.level === 0 && inviterUserId && inviterUserId !== p.partnerId) {
+      const referralAmount = computeCommissionAmount(order.amount_rub, directPct);
       await db.query(
         `insert into missed_profits (user_id, order_id, amount_rub, potential_commission_rub, beneficiary_partner_id)
          values ($1, $2, $3, $4, $5)`,
-        [referrerUserId, order.id, order.amount_rub, referralAmount, p.partnerId]
+        [inviterUserId, order.id, order.amount_rub, referralAmount, p.partnerId]
       );
       extraNote = "\n<i>(Pass-up от не-партнера)</i>";
     }
 
+    const emoji = p.level === 0 ? "💰" : "🤝";
+    const levelText = p.level === 0 ? "Прямая продажа" : "Командная продажа";
     await sendPartnerNotification(
-      db,
-      p.partnerId,
+      db, p.partnerId,
       `${emoji} <b>Новое начисление!</b>\n\n` +
       `Тип: ${levelText}\n` +
       `Сумма: <b>${amountRub}₽</b>\n` +
@@ -445,9 +423,6 @@ export async function allocateCommissionsForOrder(db, orderId) {
     );
   }
 
-
-
-  // Track conversion on referral link
   if (directLinkId || directClickId) {
     await markReferralConversion(db, {
       clickId: directClickId,
