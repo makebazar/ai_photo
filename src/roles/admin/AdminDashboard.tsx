@@ -1034,7 +1034,8 @@ function PartnersList({ partners }: { partners: any[] }) {
             <tr>
               <th className="p-3">ID</th>
               <th className="p-3">Username</th>
-              <th className="p-3">Баланс</th>
+              <th className="p-3">Баланс (Доступно / Холд)</th>
+
               <th className="p-3">Статус</th>
             </tr>
           </thead>
@@ -1043,7 +1044,15 @@ function PartnersList({ partners }: { partners: any[] }) {
               <tr key={p.partnerId} className="border-b border-white/5">
                 <td className="p-3 font-mono text-white/60">{p.partnerId}</td>
                 <td className="p-3 text-white">{p.username || "—"}</td>
-                <td className="p-3 text-white">{p.balances.availableRub} ₽</td>
+                <td className="p-3">
+                  <div className="flex flex-col">
+                    <span className="text-white font-medium">{p.balances.availableRub} ₽</span>
+                    {p.balances.lockedRub > 0 && (
+                      <span className="text-[10px] text-white/40 italic">Холд: {p.balances.lockedRub} ₽</span>
+                    )}
+                  </div>
+                </td>
+
                 <td className="p-3">
                   <span className={cn("rounded-full px-2 py-1 text-xs", p.status === "active" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400")}>
                     {p.status}
