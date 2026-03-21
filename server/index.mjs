@@ -1816,7 +1816,7 @@ async function handleOrderPaid(db, orderId) {
         utm: utm,
       });
 
-      if (user?.id && resolved.kind === "client") {
+      if (user?.id && resolved.kind === "client" && resolved.partnerId) {
         await ensureClientAttribution(db, { userId: user.id, clientCode: resolved.code });
       }
 

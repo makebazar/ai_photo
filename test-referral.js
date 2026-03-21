@@ -1,248 +1,167 @@
-/**
- * Тест реферальной системы
- * Запуск: node test-referral.js
- */
-
-const API_BASE = process.env.API_BASE || 'http://localhost:3000';
+const API_BASE = process.env.API_BASE || "http://localhost:3000";
 
 async function api(endpoint, options = {}) {
   const url = `${API_BASE}${endpoint}`;
-  console.log(`→ ${options.method || 'GET'} ${url}`);
-  
   const res = await fetch(url, {
     ...options,
     headers: {
-      'Content-Type': 'application/json',
-      'X-Admin-Auth': '1',
-      ...options.headers,
+      "Content-Type": "application/json",
+      "X-Admin-Auth": "1",
+      ...(options.headers || {}),
     },
   });
-  
-  let data;
+  const text = await res.text();
+  let data = null;
   try {
-    data = await res.json();
+    data = text ? JSON.parse(text) : {};
   } catch {
-    data = await res.text();
+    data = text;
   }
-  
-  if (!res.ok) {
-    console.error(`❌ Error ${res.status}:`, data);
-    throw new Error(`${res.status}: ${JSON.stringify(data)}`);
-  }
-  
-  console.log(`✅ OK`);
+  if (!res.ok) throw new Error(`${endpoint} -> ${res.status}: ${typeof data === "string" ? data : JSON.stringify(data)}`);
   return data;
 }
 
-async function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-// ============ MAIN TEST ============
-
-async function runTest() {
-  console.log('🚀 Тест реферальной системы\n');
-  console.log('API_BASE:', API_BASE);
-  console.log('='.repeat(50));
-  
-  try {
-    // Шаг 1: Создаём тестовых пользователей
-    console.log('\n📝 ШАГ 1: Создаём пользователей\n');
-    
-    const users = [];
-    for (let i = 0; i < 5; i++) {
-      const tgId = 100000000 + i * 11111111;
-      const username = `user_${i + 1}`;
-      
-      try {
-        const res = await api('/api/debug/create-user', {
-          method: 'POST',
-          body: JSON.stringify({ tgId, username }),
-        });
-        users.push(res.user);
-        console.log(`   Создан: ${username} (ID: ${res.user.id}, TG: ${res.user.tg_id})\n`);
-      } catch (e) {
-        console.log(`   Уже существует: ${username}\n`);
-        users.push({ id: `user_${i + 1}`, tg_id: tgId, username });
-      }
-      
-      await sleep(200);
-    }
-    
-    // Шаг 2: Регистрируем партнёра root
-    console.log('\n📝 ШАГ 2: Регистрируем корневого партнёра\n');
-    
-    const rootPartner = await api('/api/partner/register', {
-      method: 'POST',
-      body: JSON.stringify({ 
-        tgId: users[0].tg_id,
-        username: users[0].username,
-      }),
-    });
-    
-    console.log('✅ Root партнёр:');
-    console.log('   public_id:', rootPartner.partner.public_id);
-    console.log('   client_code:', rootPartner.partner.client_code);
-    console.log('   team_code:', rootPartner.partner.team_code);
-    
-    await sleep(300);
-    
-    // Шаг 3: Регистрируем партнёра L1
-    console.log('\n📝 ШАГ 3: Регистрируем партнёра L1 (приглашён root)\n');
-    
-    const l1Partner = await api('/api/partner/register', {
-      method: 'POST',
-      body: JSON.stringify({ 
-        tgId: users[1].tg_id,
-        username: users[1].username,
-        teamCode: rootPartner.partner.team_code,
-      }),
-    });
-    
-    console.log('✅ L1 партнёр:');
-    console.log('   public_id:', l1Partner.partner.public_id);
-    console.log('   client_code:', l1Partner.partner.client_code);
-    console.log('   team_code:', l1Partner.partner.team_code);
-    console.log('   parent_partner_id:', l1Partner.partner.parent_partner_id);
-    
-    await sleep(300);
-    
-    // Шаг 4: Регистрируем партнёра L2
-    console.log('\n📝 ШАГ 4: Регистрируем партнёра L2 (приглашён L1)\n');
-    
-    const l2Partner = await api('/api/partner/register', {
-      method: 'POST',
-      body: JSON.stringify({ 
-        tgId: users[2].tg_id,
-        username: users[2].username,
-        teamCode: l1Partner.partner.team_code,
-      }),
-    });
-    
-    console.log('✅ L2 партнёр:');
-    console.log('   public_id:', l2Partner.partner.public_id);
-    console.log('   client_code:', l2Partner.partner.client_code);
-    console.log('   team_code:', l2Partner.partner.team_code);
-    console.log('   parent_partner_id:', l2Partner.partner.parent_partner_id);
-    
-    await sleep(300);
-    
-    // Шаг 5: Создаём заказы для клиентов
-    console.log('\n📝 ШАГ 5: Создаём заказы для клиентов\n');
-    
-    // Клиент 1 (через L1)
-    console.log('Заказ 1: client_code =', l1Partner.partner.client_code);
-    const order1 = await api('/api/client/order', {
-      method: 'POST',
-      body: JSON.stringify({ 
-        tgId: users[3].tg_id,
-        username: users[3].username,
-        planId: 'standard',
-        clientCode: l1Partner.partner.client_code,
-      }),
-    });
-    console.log('   order_id:', order1.order.id);
-    
-    await sleep(200);
-    
-    // Клиент 2 (через L2)
-    console.log('\nЗаказ 2: client_code =', l2Partner.partner.client_code);
-    const order2 = await api('/api/client/order', {
-      method: 'POST',
-      body: JSON.stringify({ 
-        tgId: users[4].tg_id,
-        username: users[4].username,
-        planId: 'pro',
-        clientCode: l2Partner.partner.client_code,
-      }),
-    });
-    console.log('   order_id:', order2.order.id);
-    
-    await sleep(300);
-    
-    // Шаг 6: Помечаем заказы оплаченными
-    console.log('\n📝 ШАГ 6: Помечаем заказы оплаченными\n');
-    
-    await api(`/api/orders/${order1.order.id}/mark-paid`, {
-      method: 'POST',
-    });
-    console.log('   Заказ 1 оплачен');
-    
-    await sleep(200);
-    
-    await api(`/api/orders/${order2.order.id}/mark-paid`, {
-      method: 'POST',
-    });
-    console.log('   Заказ 2 оплачен');
-    
-    await sleep(500);
-    
-    // Шаг 7: Проверяем дашборды
-    console.log('\n\n========== РЕЗУЛЬТАТЫ ==========\n');
-    
-    const rootDash = await api(`/api/partner/${rootPartner.partner.public_id}/dashboard`);
-    console.log('\n📊 Root партнёр (public_id:', rootPartner.partner.public_id, '):');
-    console.log('   Баланс:', rootDash.balance.available_rub, '₽');
-    console.log('   Прямых клиентов:', rootDash.stats.direct_clients);
-    console.log('   Команда L1:', rootDash.stats.team_l1);
-    console.log('   Команда L2:', rootDash.stats.team_l2);
-    console.log('   Оборот:', rootDash.stats.turnover_rub, '₽');
-    
-    await sleep(200);
-    
-    const l1Dash = await api(`/api/partner/${l1Partner.partner.public_id}/dashboard`);
-    console.log('\n📊 L1 партнёр (public_id:', l1Partner.partner.public_id, '):');
-    console.log('   Баланс:', l1Dash.balance.available_rub, '₽');
-    console.log('   Прямых клиентов:', l1Dash.stats.direct_clients);
-    console.log('   Команда L1:', l1Dash.stats.team_l1);
-    console.log('   Команда L2:', l1Dash.stats.team_l2);
-    console.log('   Оборот:', l1Dash.stats.turnover_rub, '₽');
-    
-    await sleep(200);
-    
-    const l2Dash = await api(`/api/partner/${l2Partner.partner.public_id}/dashboard`);
-    console.log('\n📊 L2 партнёр (public_id:', l2Partner.partner.public_id, '):');
-    console.log('   Баланс:', l2Dash.balance.available_rub, '₽');
-    console.log('   Прямых клиентов:', l2Dash.stats.direct_clients);
-    console.log('   Команда L1:', l2Dash.stats.team_l1);
-    console.log('   Команда L2:', l2Dash.stats.team_l2);
-    console.log('   Оборот:', l2Dash.stats.turnover_rub, '₽');
-    
-    // Шаг 8: Проверяем команды
-    console.log('\n\n========== КОМАНДЫ ==========\n');
-    
-    const rootTeam = await api(`/api/partner/${rootPartner.partner.public_id}/team`);
-    console.log('\n🌳 Root команда:');
-    console.log('   L1:', rootTeam.team?.l1?.length || 0, 'партнёров');
-    console.log('   L2:', rootTeam.team?.l2?.length || 0, 'партнёров');
-    
-    await sleep(200);
-    
-    const l1Team = await api(`/api/partner/${l1Partner.partner.public_id}/team`);
-    console.log('\n🌳 L1 команда:');
-    console.log('   L1:', l1Team.team?.l1?.length || 0, 'партнёров');
-    console.log('   L2:', l1Team.team?.l2?.length || 0, 'партнёров');
-    
-    await sleep(200);
-    
-    const l2Team = await api(`/api/partner/${l2Partner.partner.public_id}/team`);
-    console.log('\n🌳 L2 команда:');
-    console.log('   L1:', l2Team.team?.l1?.length || 0, 'партнёров');
-    console.log('   L2:', l2Team.team?.l2?.length || 0, 'партнёров');
-    
-    // Итоги
-    console.log('\n\n========== ИТОГИ ==========\n');
-    console.log('✅ Тест завершён!');
-    console.log('\n💡 Проверьте в админке:');
-    console.log('   1. Раздел "Партнёры" — должны быть 3 партнёра');
-    console.log('   2. Раздел "Заказы" — должно быть 2 заказа');
-    console.log('   3. Балансы партнёров — должны быть начисления');
-    
-  } catch (error) {
-    console.error('\n❌ Ошибка:', error.message);
-    console.error(error.stack);
-    process.exit(1);
+function expectEqual(name, got, expected) {
+  if (got !== expected) {
+    throw new Error(`${name}: expected ${expected}, got ${got}`);
   }
 }
 
-runTest();
+async function paidOrderAndReadCommissions(orderId) {
+  await api(`/api/orders/${orderId}/mark-paid`, { method: "POST", body: JSON.stringify({}) });
+  const orders = await api("/api/admin/orders");
+  const row = (orders.orders || []).find((o) => o.id === orderId);
+  if (!row) throw new Error(`Order ${orderId} not found in admin orders`);
+  const chain = (row.commission_chain || []).slice().sort((a, b) => a.level - b.level);
+  return chain;
+}
+
+function amountByLevel(chain, level) {
+  const row = chain.find((x) => x.level === level);
+  return row ? Number(row.amount) : 0;
+}
+
+function hasLevel(chain, level) {
+  return chain.some((x) => x.level === level);
+}
+
+async function createUser(tgId, username) {
+  const res = await api("/api/debug/create-user", {
+    method: "POST",
+    body: JSON.stringify({ tgId, username }),
+  });
+  return res.user;
+}
+
+async function createPartner(tgId, username, teamCode = null) {
+  const res = await api("/api/debug/create-partner", {
+    method: "POST",
+    body: JSON.stringify({ tgId, username, teamCode }),
+  });
+  return res;
+}
+
+async function createOrder(tgId, username, planId, clientCode) {
+  const body = { tgId, username, planId };
+  if (clientCode) body.clientCode = clientCode;
+  const res = await api("/api/client/order", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return res.order;
+}
+
+async function run() {
+  console.log(`API_BASE=${API_BASE}`);
+  try {
+    await api("/api/debug/reset-all", { method: "POST", body: JSON.stringify({}) });
+  } catch {
+  }
+
+  const rootUser = await createUser(900001001, "root_owner");
+  const root = await createPartner(rootUser.tg_id, rootUser.username);
+  const rootPartner = root.partner;
+
+  const cfgRes = await api("/api/admin/config");
+  const cfg = cfgRes.config;
+  cfg.mlm = cfg.mlm || {};
+  cfg.mlm.ownerPartnerId = rootPartner.id;
+  await api("/api/admin/config", {
+    method: "PUT",
+    body: JSON.stringify({ patch: { mlm: cfg.mlm } }),
+  });
+
+  const partnerUser = await createUser(900001002, "partner_a");
+  const partner = await createPartner(partnerUser.tg_id, partnerUser.username, rootPartner.team_code);
+
+  const scenarioResults = [];
+
+  {
+    const buyer = await createUser(900001101, "buyer_direct_code");
+    const order = await createOrder(buyer.tg_id, buyer.username, "standard", rootPartner.client_code);
+    const chain = await paidOrderAndReadCommissions(order.id);
+    expectEqual("S1 level0 20%", amountByLevel(chain, 0), 100);
+    expectEqual("S1 level1 10%", amountByLevel(chain, 1), 50);
+    scenarioResults.push({ scenario: "S1 owner direct by clientCode", chain });
+  }
+
+  {
+    const buyer = await createUser(900001102, "buyer_click_then_order");
+    await api("/api/ref/click", {
+      method: "POST",
+      body: JSON.stringify({ code: rootPartner.client_code, tgId: buyer.tg_id, username: buyer.username }),
+    });
+    const order = await createOrder(buyer.tg_id, buyer.username, "standard");
+    const chain = await paidOrderAndReadCommissions(order.id);
+    expectEqual("S2 level0 20%", amountByLevel(chain, 0), 100);
+    expectEqual("S2 level1 10%", amountByLevel(chain, 1), 50);
+    scenarioResults.push({ scenario: "S2 click then order without clientCode", chain });
+  }
+
+  {
+    const clientOfPartner = await createUser(900001103, "client_of_partner");
+    await createOrder(clientOfPartner.tg_id, clientOfPartner.username, "standard", partner.partner.client_code);
+    const friend = await createUser(900001104, "friend_from_client");
+    await api("/api/ref/click", {
+      method: "POST",
+      body: JSON.stringify({ code: clientOfPartner.personal_ref_code, tgId: friend.tg_id, username: friend.username }),
+    });
+    const order = await createOrder(friend.tg_id, friend.username, "standard");
+    const chain = await paidOrderAndReadCommissions(order.id);
+    expectEqual("S3 level0 pass-up to partner 20%", amountByLevel(chain, 0), 100);
+    expectEqual("S3 level1 pass-up to partner 10%", amountByLevel(chain, 1), 50);
+    scenarioResults.push({ scenario: "S3 client(non-partner) refers friend (pass-up)", chain });
+  }
+
+  {
+    const buyer = await createUser(900001105, "buyer_partner_direct");
+    const order = await createOrder(buyer.tg_id, buyer.username, "standard", partner.partner.client_code);
+    const chain = await paidOrderAndReadCommissions(order.id);
+    expectEqual("S4 level0 partner 20%", amountByLevel(chain, 0), 100);
+    expectEqual("S4 level1 upline 10%", amountByLevel(chain, 1), 50);
+    scenarioResults.push({ scenario: "S4 regular partner direct referral", chain });
+  }
+
+  {
+    const buyer = await createUser(900001106, "buyer_no_ref");
+    const order = await createOrder(buyer.tg_id, buyer.username, "standard");
+    const chain = await paidOrderAndReadCommissions(order.id);
+    if (hasLevel(chain, 0)) throw new Error("S5 no-ref should not have level 0");
+    expectEqual("S5 only owner level1", amountByLevel(chain, 1), 50);
+    scenarioResults.push({ scenario: "S5 no referral", chain });
+  }
+
+  console.log("\nSCENARIO RESULTS");
+  for (const r of scenarioResults) {
+    console.log(`- ${r.scenario}`);
+    for (const c of r.chain) {
+      console.log(`  L${c.level}: ${c.amount}₽ (${c.percent}%) @${c.username}`);
+    }
+  }
+  console.log("\nALL SCENARIOS PASSED");
+}
+
+run().catch((e) => {
+  console.error(e.message);
+  process.exit(1);
+});
