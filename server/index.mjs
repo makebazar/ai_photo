@@ -83,13 +83,13 @@ async function resolvePartnerByCode(db, code) {
   const result = await resolveReferralCode(db, code);
   if (!result) return null;
   
-  const { partnerId, kind } = result;
-  const column = kind === "client" ? "client_code" : "team_code";
+  const { partnerId } = result;
+  if (!partnerId) return null;
   const { rows } = await db.query(
-    `select id, public_id, user_id, ${column} as code, status from partners where id = $1`,
+    `select id, public_id, user_id, status from partners where id = $1`,
     [partnerId],
   );
-  return rows[0] ?? null;
+  return rows[0] ? { ...rows[0], code } : null;
 }
 
 async function ensurePartner(db, { userId, teamCode }) {
@@ -171,7 +171,15 @@ async function createOrder(db, { userId, planId, clientCode }) {
   const amountRub = plan.priceRub;
 
   const direct = clientCode ? await ensureClientAttribution(db, { userId, clientCode }) : null;
-  const attributionPartnerId = direct?.id ?? null;
+  let attributionPartnerId = direct?.id ?? null;
+
+  if (!attributionPartnerId) {
+    const { rows: attrRows } = await db.query(
+      `select partner_id from client_attribution where user_id = $1`,
+      [userId],
+    );
+    attributionPartnerId = attrRows[0]?.partner_id ?? null;
+  }
 
   const { rows } = await db.query(
     `
