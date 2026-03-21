@@ -180,7 +180,7 @@ export type GenerationModelConfig = {
 
 export type AdminConfig = {
   plans: AdminPlan[];
-  commissionsPct: { directClient: number; teamL1: number; teamL2: number };
+  commissionsPct: { partner: number; parent: number };
   payout: { minWithdrawRub: number; slaText: string };
   costs: { 
     avatarTokens: number; 

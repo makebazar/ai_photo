@@ -26,17 +26,6 @@ export function PartnerMiniApp() {
   const toast = useToast();
   const cfg = usePublicConfig();
   const plans = cfg.plans;
-  const payoutPolicy = React.useMemo(
-    () => ({
-      clientDirectPct: cfg.commissionsPct.directClient,
-      teamLevel1Pct: cfg.commissionsPct.teamL1,
-      teamLevel2Pct: cfg.commissionsPct.teamL2,
-      minWithdrawRub: cfg.payout.minWithdrawRub,
-      moderationEta: cfg.payout.slaText,
-      note: "Начисления считаются после успешной оплаты. При возвратах/фроде выплаты могут быть отменены.",
-    }),
-    [cfg.commissionsPct.directClient, cfg.commissionsPct.teamL1, cfg.commissionsPct.teamL2, cfg.payout.minWithdrawRub, cfg.payout.slaText],
-  );
   const [view, setView] = React.useState<"dashboard" | "team" | "ref">("dashboard");
   const [withdrawOpen, setWithdrawOpen] = React.useState(false);
   const [viewerOpen, setViewerOpen] = React.useState(false);
@@ -52,6 +41,21 @@ export function PartnerMiniApp() {
   const [clients, setClients] = React.useState<ClientItem[]>([]);
   const [downline, setDownline] = React.useState<{ level1: DownlinePartner[] } | null>(null);
   const [isRegistering, setIsRegistering] = React.useState(false);
+
+  const payoutPolicy = React.useMemo(
+    () => {
+      return {
+        clientDirectPct: cfg.commissionsPct.partner,
+        teamLevel1Pct: cfg.commissionsPct.parent,
+        minWithdrawRub: cfg.payout.minWithdrawRub,
+        moderationEta: cfg.payout.slaText,
+        note: "Начисления считаются после успешной оплаты. При возвратах/фроде выплаты могут быть отменены. Новые начисления попадают в Холд на 14 дней.",
+      };
+    },
+    [cfg.commissionsPct, cfg.payout.minWithdrawRub, cfg.payout.slaText],
+  );
+
+
 
   const handleRegister = async () => {
     try {
@@ -111,14 +115,15 @@ export function PartnerMiniApp() {
   const mediaPromos = React.useMemo(() => promoItems.filter((p) => p.kind !== "text"), [promoItems]);
 
   const teamSummary = React.useMemo(() => {
-    if (!stats) return { directClients: 0, level2Clients: 0, paidClients: 0, earningsRub: 0 };
+    if (!stats) return { directClients: 0, partners: 0, paidClients: 0, earningsRub: 0 };
     return {
       directClients: stats.direct_clients || 0,
-      level2Clients: stats.level2_clients || 0,
+      partners: stats.direct_partners || 0,
       paidClients: stats.total_team_paid_clients || 0,
       earningsRub: stats.team_earnings_rub || 0,
     };
   }, [stats]);
+
 
   return (
     <PhoneShell title="Партнерский кабинет" hideHeader>
@@ -174,7 +179,7 @@ export function PartnerMiniApp() {
             <div>
               <div className="text-xl font-semibold leading-tight text-white/95">Партнер</div>
               <div className="mt-1 text-sm text-white/65">
-                Баланс, статистика и готовые материалы для публикаций.
+                Баланс, статистика и материалы.
               </div>
             </div>
             <div className="inline-flex items-center gap-2 rounded-xl border border-stroke bg-white/5 px-3 py-2 text-xs font-semibold text-white/80">
@@ -185,17 +190,29 @@ export function PartnerMiniApp() {
 
           <Card className="relative overflow-hidden p-5">
             <div className="relative">
-              <div className="text-xs text-white/60">Доступно</div>
-              <div className="mt-1 text-3xl font-semibold tracking-tight text-white/95">
-                {rub(stats?.available_balance_rub || 0)}
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-xs text-white/60">Доступно</div>
+                  <div className="mt-1 text-3xl font-semibold tracking-tight text-white/95">
+                    {rub(stats?.available_balance_rub || 0)}
+                  </div>
+                </div>
+                {stats?.locked_balance_rub ? (
+                  <div className="text-right">
+                    <div className="text-xs text-white/40">В холде</div>
+                    <div className="mt-1 text-lg font-medium text-white/50">
+                      {rub(stats.locked_balance_rub)}
+                    </div>
+                  </div>
+                ) : null}
               </div>
               <div className="mt-4">
                 <Button className="w-full whitespace-nowrap" onClick={() => setWithdrawOpen(true)}>
                   <Wallet size={16} />
                   Вывести средства
                 </Button>
-                <div className="mt-2 text-xs text-white/55">
-                  Выплаты проверяются анти‑фродом. {cfg.payout.slaText}.
+                <div className="mt-2 text-[11px] text-white/45">
+                  Выплаты: {cfg.payout.slaText}. Холд новых начислений: 14 дней.
                 </div>
               </div>
             </div>
@@ -245,8 +262,8 @@ export function PartnerMiniApp() {
                 <div className="mt-1 text-base font-semibold text-white/95">{teamSummary.directClients}</div>
               </div>
               <div className="rounded-2xl border border-stroke bg-white/3 p-3">
-                <div className="text-[11px] text-white/55">Клиенты L2</div>
-                <div className="mt-1 text-base font-semibold text-white/95">{teamSummary.level2Clients}</div>
+                <div className="text-[11px] text-white/55">Суб-партнеры</div>
+                <div className="mt-1 text-base font-semibold text-white/95">{teamSummary.partners}</div>
               </div>
               <div className="rounded-2xl border border-stroke bg-white/3 p-3">
                 <div className="text-[11px] text-white/55">Оплатили</div>
@@ -297,34 +314,21 @@ export function PartnerMiniApp() {
                 </div>
                 <div className="mt-2 grid gap-2 text-xs text-white/70">
                   <div className="rounded-2xl border border-stroke bg-white/3 p-3">
-                      <div className="flex items-center justify-between">
-                        <span>Партнёр 1‑го уровня</span>
-                        <span className="text-white/85">{payoutPolicy.teamLevel1Pct}%</span>
-                      </div>
-                      {plans.slice(0, 2).map((p) => (
-                        <div key={p.id} className="mt-1 flex items-center justify-between text-[11px] text-white/60">
-                          <span>{p.title} {p.priceRub} ₽ → вам</span>
-                          <span className="text-white/80">
-                            {rub(Math.round((p.priceRub * payoutPolicy.teamLevel1Pct) / 100))}
-                          </span>
-                        </div>
-                      ))}
+                    <div className="flex items-center justify-between">
+                      <span>Ваши суб-партнёры (L1)</span>
+                      <span className="text-white/85">{payoutPolicy.teamLevel1Pct}%</span>
                     </div>
-                    <div className="rounded-2xl border border-stroke bg-white/3 p-3">
-                      <div className="flex items-center justify-between">
-                        <span>Партнёр 2‑го уровня</span>
-                        <span className="text-white/85">{payoutPolicy.teamLevel2Pct}%</span>
+                    {plans.slice(0, 2).map((p) => (
+                      <div key={p.id} className="mt-1 flex items-center justify-between text-[11px] text-white/60">
+                        <span>{p.title} {p.priceRub} ₽ → вам</span>
+                        <span className="text-white/80">
+                          {rub(Math.round((p.priceRub * payoutPolicy.teamLevel1Pct) / 100))}
+                        </span>
                       </div>
-                      {plans.slice(0, 2).map((p) => (
-                        <div key={p.id} className="mt-1 flex items-center justify-between text-[11px] text-white/60">
-                          <span>{p.title} {p.priceRub} ₽ → вам</span>
-                          <span className="text-white/80">
-                            {rub(Math.round((p.priceRub * payoutPolicy.teamLevel2Pct) / 100))}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
+                    ))}
+                  </div>
                 </div>
+
                 <div className="mt-2 text-[11px] text-white/55">
                   Партнёр тоже зарабатывает со своих клиентов — это отдельная выплата, а не “минус из вашей”.
                 </div>

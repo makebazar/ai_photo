@@ -39,8 +39,8 @@ function createEmptyState(): AdminState {
           badge: "Выбор профи",
         },
       ],
-      commissionsPct: { directClient: 40, teamL1: 10, teamL2: 5 },
-      payout: { minWithdrawRub: 5000, slaText: "1-3 рабочих дня" },
+      commissionsPct: { partner: 20, parent: 10 },
+      payout: { minWithdrawRub: 500, slaText: "Обычно 1–6 часов (анти‑фрод)" },
       costs: { 
         avatarTokens: 50, 
         models: [

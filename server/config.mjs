@@ -21,7 +21,8 @@ const DEFAULT_CONFIG = {
       grantsPartner: true,
     },
   ],
-  commissionsPct: { directClient: 30, teamL1: 10, teamL2: 5 },
+  commissionsPct: { partner: 20, parent: 10 },
+    mlm: { holdDays: 14 },
   payout: { minWithdrawRub: 500, slaText: "Обычно 1–6 часов (анти‑фрод)" },
   costs: {
     avatarTokens: 50, // Cost to unlock avatar training/access

@@ -209,7 +209,7 @@ export async function getPublicConfig(): Promise<{
     standard: { title: string; badge?: string };
     pro: { title: string; badge?: string };
   };
-  commissionsPct: { directClient: number; teamL1: number; teamL2: number };
+  commissionsPct: { partner: number; parent: number };
   payout: { minWithdrawRub: number; slaText: string };
   packs: StylePack[];
   promos: any[];

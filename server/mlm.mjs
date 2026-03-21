@@ -1,6 +1,44 @@
 import crypto from "node:crypto";
 import { readConfig } from "./config.mjs";
 
+/**
+ * Send notification to partner via Telegram bot
+ */
+async function sendPartnerNotification(db, partnerId, text) {
+  try {
+    const { rows } = await db.query(
+      `select u.tg_id from partners p join users u on u.id = p.user_id where p.id = $1`,
+      [partnerId]
+    );
+    const tgId = rows[0]?.tg_id;
+    if (!tgId) return;
+
+    const botToken = process.env.TELEGRAM_PARTNER_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
+    if (!botToken) {
+      console.warn("[MLM] No bot token for notification");
+      return;
+    }
+
+    const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: String(tgId),
+        text: text,
+        parse_mode: "HTML",
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      console.error("[MLM] Telegram notify error:", err);
+    }
+  } catch (err) {
+    console.error("[MLM] Failed to notify partner:", err);
+  }
+}
+
 function randomToken(len = 10) {
   return crypto.randomBytes(Math.ceil(len)).toString("base64url").slice(0, len);
 }
@@ -179,6 +217,8 @@ export async function allocateCommissionsForOrder(db, orderId) {
   if (order.status !== "paid") return { ok: false, reason: "order_not_paid" };
 
   const cfg = await readConfig(db);
+  const holdDays = cfg.mlm?.holdDays ?? 14;
+  const unlockAt = new Date(Date.now() + holdDays * 24 * 60 * 60 * 1000);
 
   // Determine the "direct" partner (who invited the paying client).
   let directPartnerId = order.attribution_partner_id;
@@ -215,36 +255,28 @@ export async function allocateCommissionsForOrder(db, orderId) {
   if (!direct) return { ok: true, commissions: 0 };
 
   const l1PartnerId = direct.parent_partner_id ?? null;
-  let l2PartnerId = null;
-  if (l1PartnerId) {
-    const { rows: l1Rows } = await db.query(`select parent_partner_id from partners where id = $1`, [l1PartnerId]);
-    l2PartnerId = l1Rows?.[0]?.parent_partner_id ?? null;
-  }
+
+  const partnerPct = cfg.commissionsPct.partner || 20;
+  const parentPct = cfg.commissionsPct.parent || 10;
 
   const payouts = [
     {
       partnerId: directPartnerId,
       level: 0,
-      percent: cfg.commissionsPct.directClient,
+      percent: partnerPct,
       linkId: directLinkId,
     },
     l1PartnerId
       ? {
           partnerId: l1PartnerId,
           level: 1,
-          percent: cfg.commissionsPct.teamL1,
-          linkId: null,
-        }
-      : null,
-    l2PartnerId
-      ? {
-          partnerId: l2PartnerId,
-          level: 2,
-          percent: cfg.commissionsPct.teamL2,
+          percent: parentPct,
           linkId: null,
         }
       : null,
   ].filter(Boolean);
+
+
 
   let created = 0;
   let totalEarnings = 0;
@@ -255,12 +287,12 @@ export async function allocateCommissionsForOrder(db, orderId) {
 
     const { rows: insertRows } = await db.query(
       `
-      insert into commissions (order_id, partner_id, level, percent, amount_rub, status)
-      values ($1, $2, $3, $4, $5, 'available')
+      insert into commissions (order_id, partner_id, level, percent, amount_rub, status, unlock_at)
+      values ($1, $2, $3, $4, $5, 'locked', $6)
       on conflict (order_id, partner_id, level) do nothing
       returning id
       `,
-      [order.id, p.partnerId, p.level, p.percent, amountRub],
+      [order.id, p.partnerId, p.level, p.percent, amountRub, unlockAt],
     );
 
     if (!insertRows.length) continue;
@@ -270,7 +302,7 @@ export async function allocateCommissionsForOrder(db, orderId) {
     await db.query(
       `insert into partner_ledger (partner_id, entry_type, amount_rub, order_id, meta)
        values ($1, $2, $3, $4, $5::jsonb)`,
-      [p.partnerId, p.level === 0 ? "commission.direct" : p.level === 1 ? "commission.team_l1" : "commission.team_l2", amountRub, order.id, JSON.stringify({ percent: p.percent, level: p.level })],
+      [p.partnerId, p.level === 0 ? "commission.direct" : p.level === 1 ? "commission.team_l1" : "commission.team_l2", amountRub, order.id, JSON.stringify({ percent: p.percent, level: p.level, status: 'locked', unlock_at: unlockAt })],
     );
 
     await db.query(
@@ -279,17 +311,29 @@ export async function allocateCommissionsForOrder(db, orderId) {
        on conflict (partner_id) do nothing`,
       [p.partnerId],
     );
+    
+    // Add to locked_rub (instead of available_rub)
     await db.query(
-      `update partner_balances set available_rub = available_rub + $2, updated_at = now() where partner_id = $1`,
+      `update partner_balances set locked_rub = locked_rub + $2, updated_at = now() where partner_id = $1`,
       [p.partnerId, amountRub],
     );
     
-    // Update partner total earnings
-    await db.query(
-      `update partners set total_earnings_rub = total_earnings_rub + $2 where id = $1`,
-      [p.partnerId, amountRub]
+    // Update partner stats (rank, total earnings, etc)
+    await db.query(`select update_partner_stats($1)`, [p.partnerId]);
+
+    // Send notification
+    const emoji = p.level === 0 ? "💰" : "🤝";
+    const levelText = p.level === 0 ? "Прямая продажа" : `Командная продажа (L${p.level})`;
+    await sendPartnerNotification(
+      db,
+      p.partnerId,
+      `${emoji} <b>Новое начисление!</b>\n\n` +
+      `Тип: ${levelText}\n` +
+      `Сумма: <b>${amountRub}₽</b>\n` +
+      `Статус: Холд ${holdDays} дней`
     );
   }
+
 
   // Track conversion on referral link
   if (directLinkId) {
@@ -303,4 +347,98 @@ export async function allocateCommissionsForOrder(db, orderId) {
 
   return { ok: true, commissions: created };
 }
+
+/**
+ * Process commissions that reached their unlock_at time.
+ */
+export async function unlockCommissions(db) {
+  const { rows } = await db.query(
+    `
+    select id, partner_id, amount_rub
+    from commissions
+    where status = 'locked' and unlock_at <= now()
+    for update skip locked
+    `,
+  );
+
+  let unlockedCount = 0;
+  for (const c of rows) {
+    await db.query(
+      `update commissions set status = 'available', updated_at = now() where id = $1`,
+      [c.id],
+    );
+    await db.query(
+      `update partner_balances 
+       set locked_rub = greatest(0, locked_rub - $2),
+           available_rub = available_rub + $2,
+           updated_at = now()
+       where partner_id = $1`,
+      [c.partner_id, c.amount_rub],
+    );
+    await db.query(
+      `insert into partner_ledger (partner_id, entry_type, amount_rub, meta)
+       values ($1, 'commission.unlocked', $2, $3::jsonb)`,
+      [c.partner_id, 0, JSON.stringify({ commissionId: c.id, amount: c.amount_rub })],
+    );
+    unlockedCount++;
+  }
+  return unlockedCount;
+}
+
+/**
+ * Reverse commissions for a refunded or chargebacked order.
+ */
+export async function reverseCommissionsForOrder(db, orderId, reason = 'refund') {
+  const { rows: commissions } = await db.query(
+    `select id, partner_id, amount_rub, status from commissions where order_id = $1 and status <> 'reversed'`,
+    [orderId],
+  );
+
+  let reversedCount = 0;
+  for (const c of commissions) {
+    await db.query(
+      `update commissions set status = 'reversed', reversal_reason = $2, reversed_at = now() where id = $1`,
+      [c.id, reason],
+    );
+
+    if (c.status === 'available') {
+      await db.query(
+        `update partner_balances 
+         set available_rub = greatest(0, available_rub - $2),
+             updated_at = now()
+         where partner_id = $1`,
+        [c.partner_id, c.amount_rub],
+      );
+    } else if (c.status === 'locked') {
+      await db.query(
+        `update partner_balances 
+         set locked_rub = greatest(0, locked_rub - $2),
+             updated_at = now()
+         where partner_id = $1`,
+        [c.partner_id, c.amount_rub],
+      );
+    }
+
+    await db.query(
+      `insert into partner_ledger (partner_id, entry_type, amount_rub, order_id, meta)
+       values ($1, 'commission.reversed', $2, $3, $4::jsonb)`,
+      [c.partner_id, -c.amount_rub, orderId, JSON.stringify({ reason, commissionId: c.id })],
+    );
+    
+    await db.query(`select update_partner_stats($1)`, [c.partner_id]);
+
+     // Send reversal notification
+     await sendPartnerNotification(
+       db,
+       c.partner_id,
+       `⚠️ <b>Корректировка начисления</b>\n\n` +
+       `Сумма: -${c.amount_rub}₽\n` +
+       `Причина: ${reason === 'refund' ? 'Возврат средств клиенту' : 'Chargeback'}`
+     );
+
+     reversedCount++;
+  }
+  return reversedCount;
+}
+
 

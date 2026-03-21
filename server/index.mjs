@@ -6,7 +6,7 @@ import path from "node:path";
 import { makePool, withTx } from "./db.mjs";
 import { ensureConfigRow, readConfig } from "./config.mjs";
 import { ensureSeedData } from "./seed.mjs";
-import { allocateCommissionsForOrder, makeReferralCodes, parseReferralCode, resolveReferralCode, trackReferralClick } from "./mlm.mjs";
+import { allocateCommissionsForOrder, reverseCommissionsForOrder, makeReferralCodes, parseReferralCode, resolveReferralCode, trackReferralClick } from "./mlm.mjs";
 import { requireTelegramAuth } from "./auth.mjs";
 import { httpError } from "./http.mjs";
 
@@ -1308,7 +1308,12 @@ async function handleOrderPaid(db, orderId) {
 
       if (status === "refunded") {
         await db.query(`update orders set status = 'refunded' where id = $1`, [orderId]);
-        // Prototype: not reversing commissions yet.
+        await reverseCommissionsForOrder(db, orderId, 'refund');
+      }
+
+      if (status === "chargeback") {
+        await db.query(`update orders set status = 'chargeback' where id = $1`, [orderId]);
+        await reverseCommissionsForOrder(db, orderId, 'chargeback');
       }
 
       return { ok: true };

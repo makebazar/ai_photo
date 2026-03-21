@@ -28,9 +28,11 @@ export type PublicConfig = {
   updatedAt: number;
   plans: PublicPlan[];
   commissionsPct: {
-    directClient: number;
-    teamL1: number;
-    teamL2: number;
+    partner: number;
+    parent: number;
+  };
+  mlm?: {
+    holdDays: number;
   };
   payout: {
     minWithdrawRub: number;
@@ -69,9 +71,8 @@ const DEFAULT_PUBLIC_CONFIG: PublicConfig = {
     },
   ],
   commissionsPct: {
-    directClient: 30,
-    teamL1: 10,
-    teamL2: 5,
+    partner: 20,
+    parent: 10,
   },
   payout: {
     minWithdrawRub: 500,

@@ -196,8 +196,6 @@ export function AdminDashboard() {
               paid: p.paid_orders_count || 0,
               earningsRub: p.available_rub,
               turnoverRub: p.turnover_rub || 0,
-              teamL1: 0, // Should be calculated if needed
-              teamL2: 0, // Should be calculated if needed
             },
             links: {
               client: `https://t.me/bot?start=${p.client_code}`,
@@ -706,42 +704,61 @@ function ConfigSettings({ config, onSave }: { config: AdminConfig; onSave: (patc
 
       <Card className="p-6">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-white">Партнерская программа (%)</h2>
+          <div className="space-y-1">
+            <h2 className="text-lg font-bold text-white">Партнерская программа (%)</h2>
+            <p className="text-xs text-white/40">
+              Логика: Партнёр (кто пригласил клиента) получает свой %, а его пригласитель (аплайн) получает свой %.
+            </p>
+          </div>
           <Button onClick={() => onSave(local)}>
             <Save size={16} className="mr-2" />
             Сохранить %
           </Button>
         </div>
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2">
           <div>
-            <label className="text-xs text-white/50">Прямой клиент (L0)</label>
+            <label className="text-xs text-white/50">Партнёр (L0) %</label>
             <input
               type="number"
-              value={local.commissionsPct.directClient}
-              onChange={(e) => handleCommissionChange("directClient", e.target.value)}
+              value={local.commissionsPct.partner}
+              onChange={(e) => handleCommissionChange("partner", e.target.value)}
               className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonBlue/50"
             />
+            <p className="mt-1 text-[10px] text-white/30 italic">Например: 20%</p>
           </div>
           <div>
-            <label className="text-xs text-white/50">Команда L1</label>
+            <label className="text-xs text-white/50">Аплайн (L1) %</label>
             <input
               type="number"
-              value={local.commissionsPct.teamL1}
-              onChange={(e) => handleCommissionChange("teamL1", e.target.value)}
+              value={local.commissionsPct.parent}
+              onChange={(e) => handleCommissionChange("parent", e.target.value)}
               className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonBlue/50"
             />
+            <p className="mt-1 text-[10px] text-white/30 italic">Например: 10%</p>
           </div>
-          <div>
-            <label className="text-xs text-white/50">Команда L2</label>
-            <input
-              type="number"
-              value={local.commissionsPct.teamL2}
-              onChange={(e) => handleCommissionChange("teamL2", e.target.value)}
-              className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonBlue/50"
-            />
+        </div>
+        <div className="mt-6 rounded-xl border border-dashed border-white/10 p-4">
+          <h4 className="mb-2 text-xs font-semibold text-white/60">Визуализация распределения (30% всего):</h4>
+          <div className="flex h-8 w-full overflow-hidden rounded-lg bg-white/5">
+            <div 
+              className="flex h-full items-center justify-center bg-neonBlue/40 text-[10px] font-bold text-white" 
+              style={{ width: `${(local.commissionsPct.partner / 30) * 100}%` }}
+            >
+              Партнёр ({local.commissionsPct.partner}%)
+            </div>
+            <div 
+              className="flex h-full items-center justify-center bg-neonViolet/40 text-[10px] font-bold text-white" 
+              style={{ width: `${(local.commissionsPct.parent / 30) * 100}%` }}
+            >
+              Аплайн ({local.commissionsPct.parent}%)
+            </div>
+            <div className="flex flex-1 items-center justify-center text-[10px] text-white/20">
+              Система
+            </div>
           </div>
         </div>
       </Card>
+
 
       <Card className="p-6">
         <div className="mb-4 flex items-center justify-between">

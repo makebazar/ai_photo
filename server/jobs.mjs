@@ -1,4 +1,4 @@
-import { allocateCommissionsForOrder } from "./mlm.mjs";
+import { allocateCommissionsForOrder, unlockCommissions } from "./mlm.mjs";
 
 // Minimal job runner for prototype: simulates training/generation.
 // For production: move this into a separate worker process + queue (BullMQ, etc.).
@@ -48,6 +48,8 @@ export async function runOneJob(db, workerId) {
       await handleAvatarTrain(db, job);
     } else if (job.kind === "session.generate") {
       await handleSessionGenerate(db, job);
+    } else if (job.kind === "mlm.unlock_commissions") {
+      await handleUnlockCommissions(db, job);
     } else {
       throw new Error(`unknown job kind: ${job.kind}`);
     }
@@ -110,4 +112,11 @@ async function handleSessionGenerate(db, job) {
   const orderId = rows?.[0]?.order_id ?? null;
   if (orderId) await allocateCommissionsForOrder(db, orderId);
 }
+
+export async function handleUnlockCommissions(db, job) {
+  const count = await unlockCommissions(db);
+  if (count > 0) console.log(`[MLM] Unlocked ${count} commissions`);
+}
+
+
 
