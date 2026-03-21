@@ -1016,6 +1016,7 @@ async function main() {
           const click = await trackReferralClick(db, {
             linkId: ref.linkId,
             partnerId: ref.partnerId,
+            referrerUserId: ref.userId,
             kind: ref.kind,
             code: startParam,
             userId: user.id, // UUID
@@ -1761,7 +1762,7 @@ async function handleOrderPaid(db, orderId) {
       const { clickId } = await trackReferralClick(db, {
         linkId: resolved.linkId || null,
         partnerId: resolved.partnerId || null,
-        userId: resolved.userId || null,
+        referrerUserId: resolved.userId || null,
         kind: resolved.kind,
         code: resolved.code,
         utm: utm,

@@ -135,7 +135,7 @@ export async function resolveReferralCode(db, code, opts = {}) {
   
   // Try to find by code in partners table
   const { rows: pRows } = await db.query(
-    `select id as partner_id, client_code, team_code, status
+    `select id as partner_id, client_code, team_code, status, user_id
      from partners
      where (client_code = $1 or team_code = $1) and status = 'active'`,
     [parsed.fullCode || code]
@@ -144,6 +144,7 @@ export async function resolveReferralCode(db, code, opts = {}) {
   if (pRows[0]) {
     return {
       partnerId: pRows[0].partner_id,
+      userId: pRows[0].user_id,
       kind: parsed.kind,
       code: parsed.fullCode || code,
       linkId: null,
@@ -152,7 +153,7 @@ export async function resolveReferralCode(db, code, opts = {}) {
 
   // Try to find by code in referral_links table
   const { rows: rlRows } = await db.query(
-    `select rl.partner_id, rl.kind, rl.code, rl.id as link_id, p.status as partner_status
+    `select rl.partner_id, rl.kind, rl.code, rl.id as link_id, p.status as partner_status, p.user_id
      from referral_links rl
      join partners p on p.id = rl.partner_id
      where rl.code = $1 and rl.status = 'active' and p.status = 'active'`,
@@ -162,6 +163,7 @@ export async function resolveReferralCode(db, code, opts = {}) {
   if (rlRows[0]) {
     return {
       partnerId: rlRows[0].partner_id,
+      userId: rlRows[0].user_id,
       kind: rlRows[0].kind,
       code: rlRows[0].code,
       linkId: rlRows[0].link_id,
@@ -221,25 +223,30 @@ export async function resolveReferralCode(db, code, opts = {}) {
  * Track click on referral link
  */
 export async function trackReferralClick(db, params) {
-  const { linkId, userId, ip, ua, utm } = params;
+  const { linkId, userId, ip, ua, utm, referrerUserId } = params;
   
   if (linkId) {
-    // Use stored procedure for link-based tracking
+    // Note: track_referral_click is a stored procedure, we don't pass referrerUserId to it yet
+    // because it mostly handles partner links. If we need to, we'll update the procedure too.
     const { rows } = await db.query(
       `select track_referral_click($1, $2, $3, $4, $5, $6, $7, $8, $9) as id`,
       [linkId, userId || null, ip || null, ua || null, 
        utm?.source || null, utm?.medium || null, utm?.campaign || null, 
        utm?.content || null, utm?.term || null]
     );
+    // If it's a link click, also update the referrer_user_id manually if it's available
+    if (referrerUserId && rows[0]?.id) {
+      await db.query(`update referral_clicks set referrer_user_id = $2 where id = $1`, [rows[0].id, referrerUserId]);
+    }
     return { clickId: rows[0]?.id };
   }
   
   // Fallback: simple click tracking
   const { rows } = await db.query(
-    `insert into referral_clicks (kind, code, partner_id, user_id, ip, ua, utm_source, utm_medium, utm_campaign)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    `insert into referral_clicks (kind, code, partner_id, user_id, referrer_user_id, ip, ua, utm_source, utm_medium, utm_campaign)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
      returning id`,
-    [params.kind, params.code, params.partnerId, userId || null, ip || null, ua || null,
+    [params.kind, params.code, params.partnerId, userId || null, referrerUserId || null, ip || null, ua || null,
      utm?.source || null, utm?.medium || null, utm?.campaign || null]
   );
   
@@ -288,7 +295,7 @@ export async function allocateCommissionsForOrder(db, orderId) {
   if (!directPartnerId) {
     // Check for link-based attribution
     const { rows: clickRows } = await db.query(
-      `select id, partner_id, link_id, user_id as referrer_user_id from referral_clicks 
+      `select id, partner_id, link_id, referrer_user_id from referral_clicks 
        where user_id = $1 and kind = 'client' 
        order by clicked_at desc limit 1`,
       [order.user_id]
@@ -298,6 +305,19 @@ export async function allocateCommissionsForOrder(db, orderId) {
       directPartnerId = clickRows[0].partner_id;
       directLinkId = clickRows[0].link_id;
       referrerUserId = clickRows[0].referrer_user_id;
+
+      // If partner_id is missing but we have referrer_user_id, check if they are a partner now
+      // This handles the case where someone shared a link before becoming a partner
+      if (!directPartnerId && referrerUserId) {
+        const { rows: pRows } = await db.query(
+          `select id from partners where user_id = $1 and status = 'active'`,
+          [referrerUserId]
+        );
+        if (pRows[0]) {
+          directPartnerId = pRows[0].id;
+          console.log(`[MLM] Resolved partner ${directPartnerId} from referrer_user_id ${referrerUserId} at allocation time`);
+        }
+      }
     }
   }
 
@@ -403,8 +423,9 @@ export async function allocateCommissionsForOrder(db, orderId) {
     const levelText = p.level === 0 ? "Прямая продажа" : `Командная продажа (L${p.level})`;
     
     // Check if this was a Pass-up (referrer was not a partner)
+    // Only record if the referrer is DIFFERENT from the partner who got the commission
     let extraNote = "";
-    if (p.level === 0 && referrerUserId) {
+    if (p.level === 0 && referrerUserId && referrerUserId !== p.partnerId) {
       const referralAmount = computeCommissionAmount(order.amount_rub, partnerPct);
       await db.query(
         `insert into missed_profits (user_id, order_id, amount_rub, potential_commission_rub, beneficiary_partner_id)
