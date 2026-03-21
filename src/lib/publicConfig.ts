@@ -4,16 +4,22 @@ import { readLocalStorage, writeLocalStorage } from "./storage";
 const LS_KEY = "ai_photo_public_config_v1";
 const EVENT_NAME = "ai_photo_public_config_changed";
 
+export type PublicPlan = {
+  id: string;
+  slug: string;
+  title: string;
+  tagline: string;
+  priceRub: number;
+  tokens: number;
+  photosCount: number;
+  featured?: boolean;
+  badge?: string;
+  grantsPartner: boolean;
+};
+
 export type PublicConfig = {
   updatedAt: number;
-  planPricesRub: {
-    standard: number;
-    pro: number;
-  };
-  planMeta: {
-    standard: { title: string; badge?: string };
-    pro: { title: string; badge?: string };
-  };
+  plans: PublicPlan[];
   commissionsPct: {
     directClient: number;
     teamL1: number;
@@ -29,14 +35,29 @@ export type PublicConfig = {
 
 const DEFAULT_PUBLIC_CONFIG: PublicConfig = {
   updatedAt: 0,
-  planPricesRub: {
-    standard: 2990,
-    pro: 4990,
-  },
-  planMeta: {
-    standard: { title: "Standard" },
-    pro: { title: "PRO", badge: "Выбор профи" },
-  },
+  plans: [
+    {
+      id: "standard",
+      slug: "standard",
+      title: "Стандарт",
+      tagline: "Standard plan",
+      priceRub: 2990,
+      tokens: 30,
+      photosCount: 20,
+      grantsPartner: false,
+    },
+    {
+      id: "pro",
+      slug: "pro",
+      title: "PRO",
+      tagline: "Pro plan",
+      priceRub: 4990,
+      tokens: 100,
+      photosCount: 30,
+      grantsPartner: true,
+      badge: "Выбор профи",
+    },
+  ],
   commissionsPct: {
     directClient: 40,
     teamL1: 10,
@@ -63,12 +84,7 @@ export function loadPublicConfig(): PublicConfig {
     ...DEFAULT_PUBLIC_CONFIG,
     ...persisted,
     updatedAt,
-    planPricesRub: (persisted as any).planPricesRub
-      ? { ...DEFAULT_PUBLIC_CONFIG.planPricesRub, ...(persisted as any).planPricesRub }
-      : DEFAULT_PUBLIC_CONFIG.planPricesRub,
-    planMeta: (persisted as any).planMeta
-      ? { ...DEFAULT_PUBLIC_CONFIG.planMeta, ...(persisted as any).planMeta }
-      : DEFAULT_PUBLIC_CONFIG.planMeta,
+    plans: Array.isArray((persisted as any).plans) ? (persisted as any).plans : DEFAULT_PUBLIC_CONFIG.plans,
     commissionsPct: (persisted as any).commissionsPct
       ? { ...DEFAULT_PUBLIC_CONFIG.commissionsPct, ...(persisted as any).commissionsPct }
       : DEFAULT_PUBLIC_CONFIG.commissionsPct,
@@ -97,20 +113,15 @@ export async function fetchPublicConfig(): Promise<PublicConfig> {
   const res = await fetch(`${API_BASE}/api/config`);
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
-  const cfg = data.config;
-  
-  const result: PublicConfig = {
+  const cfg: PublicConfig = {
+    ...DEFAULT_PUBLIC_CONFIG,
+    ...data.config,
     updatedAt: Date.now(),
-    planPricesRub: cfg.planPricesRub || DEFAULT_PUBLIC_CONFIG.planPricesRub,
-    planMeta: cfg.planMeta || DEFAULT_PUBLIC_CONFIG.planMeta,
-    commissionsPct: cfg.commissionsPct || DEFAULT_PUBLIC_CONFIG.commissionsPct,
-    payout: cfg.payout || DEFAULT_PUBLIC_CONFIG.payout,
-    packs: cfg.packs || [],
-    promos: cfg.promos || [],
+    plans: Array.isArray(data.config.plans) ? data.config.plans : DEFAULT_PUBLIC_CONFIG.plans,
   };
   
-  savePublicConfig(result);
-  return result;
+  savePublicConfig(cfg);
+  return cfg;
 }
 
 export function usePublicConfig() {

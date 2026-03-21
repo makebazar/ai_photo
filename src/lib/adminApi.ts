@@ -157,14 +157,21 @@ export async function rejectWithdrawal(withdrawalId: string, note?: string): Pro
   });
 }
 
-// ============ Config ============
+export type AdminPlan = {
+  id: string;
+  slug: string;
+  title: string;
+  tagline: string;
+  priceRub: number;
+  tokens: number;
+  photosCount: number;
+  featured?: boolean;
+  badge?: string;
+  grantsPartner: boolean;
+};
 
 export type AdminConfig = {
-  planPricesRub: { standard: number; pro: number };
-  planMeta: {
-    standard: { title: string; badge?: string };
-    pro: { title: string; badge?: string };
-  };
+  plans: AdminPlan[];
   commissionsPct: { directClient: number; teamL1: number; teamL2: number };
   payout: { minWithdrawRub: number; slaText: string };
 };

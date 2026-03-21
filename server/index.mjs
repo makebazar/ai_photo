@@ -127,7 +127,10 @@ async function ensureClientAttribution(db, { userId, clientCode }) {
 
 async function createOrder(db, { userId, planId, clientCode }) {
   const cfg = await readConfig(db);
-  const amountRub = planId === "pro" ? cfg.planPricesRub.pro : cfg.planPricesRub.standard;
+  const plan = cfg.plans.find(p => p.id === planId);
+  if (!plan) throw httpError(400, "Invalid planId");
+  
+  const amountRub = plan.priceRub;
 
   const direct = clientCode ? await ensureClientAttribution(db, { userId, clientCode }) : null;
   const attributionPartnerId = direct?.id ?? null;
@@ -1091,35 +1094,39 @@ async function main() {
   });
 
 async function handleOrderPaid(db, orderId) {
-  // 1. Mark order as paid if not already
-  const { rows } = await db.query(
-    `update orders set status = 'paid', paid_at = coalesce(paid_at, now()) where id = $1 and status <> 'paid' returning id, user_id, plan_id`,
-    [orderId],
-  );
-  
-  // Even if already paid, we still try to run allocation and other logic (idempotent)
-  const order = rows[0] || (await db.query(`select id, user_id, plan_id from orders where id = $1`, [orderId])).rows[0];
-  if (!order) return null;
+   // 1. Mark order as paid if not already
+   const { rows } = await db.query(
+     `update orders set status = 'paid', paid_at = coalesce(paid_at, now()) where id = $1 and status <> 'paid' returning id, user_id, plan_id`,
+     [orderId],
+   );
+   
+   // Even if already paid, we still try to run allocation and other logic (idempotent)
+   const order = rows[0] || (await db.query(`select id, user_id, plan_id from orders where id = $1`, [orderId])).rows[0];
+   if (!order) return null;
 
-  // 2. Allocate commissions
-  const alloc = await allocateCommissionsForOrder(db, orderId);
+   const cfg = await readConfig(db);
+   const plan = cfg.plans.find(p => p.id === order.plan_id);
 
-  // 3. Grant tokens based on plan
-  // Pro plan: 100 tokens, Standard: 30 tokens (example values)
-  const tokens = order.plan_id === 'pro' ? 100 : 30;
-  await db.query(
-    `update users set tokens_balance = tokens_balance + $2 where id = $1`,
-    [order.user_id, tokens]
-  );
-
-  // 4. If 'pro' plan, ensure user is a partner
-  if (order.plan_id === 'pro') {
-    console.log(`[handleOrderPaid] Order ${orderId} is 'pro' plan. Ensuring partner for user ${order.user_id}`);
-    await ensurePartner(db, { userId: order.user_id });
-  }
-
-  return alloc;
-}
+   // 2. Allocate commissions
+   const alloc = await allocateCommissionsForOrder(db, orderId);
+ 
+   // 3. Grant tokens based on plan config
+   if (plan) {
+     const tokens = plan.tokens || 0;
+     await db.query(
+       `update users set tokens_balance = tokens_balance + $2 where id = $1`,
+       [order.user_id, tokens]
+     );
+   }
+ 
+   // 4. If plan grants partner status, ensure user is a partner
+   if (plan?.grantsPartner) {
+     console.log(`[handleOrderPaid] Order ${orderId} plan '${plan.id}' grants partner status. Ensuring partner for user ${order.user_id}`);
+     await ensurePartner(db, { userId: order.user_id });
+   }
+ 
+   return alloc;
+ }
 
   // Simulate payment webhook: mark paid + allocate commissions.
   app.post("/api/orders/:id/mark-paid", async (req) => {

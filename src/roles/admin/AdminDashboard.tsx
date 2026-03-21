@@ -28,6 +28,7 @@ import {
   type AdminPack as ApiAdminPack,
   type AdminPromo as ApiAdminPromo,
   type AdminConfig,
+  type AdminPlan,
 } from "../../lib/adminApi";
 
 const ADMIN_PASSWORD = "admin123"; // Простой пароль для прототипа
@@ -473,21 +474,38 @@ function ConfigSettings({ config, onSave }: { config: AdminConfig; onSave: (patc
     setLocal(config);
   }, [config]);
 
-  const handlePriceChange = (plan: "standard" | "pro", val: string) => {
-    const num = parseInt(val) || 0;
+  const handleAddPlan = () => {
+    const id = `plan_${Date.now()}`;
+    const newPlan: AdminPlan = {
+      id,
+      slug: id,
+      title: "Новый тариф",
+      tagline: "Описание тарифа",
+      priceRub: 1000,
+      tokens: 50,
+      photosCount: 20,
+      grantsPartner: false,
+    };
     setLocal({
       ...local,
-      planPricesRub: { ...local.planPricesRub, [plan]: num }
+      plans: [...local.plans, newPlan]
     });
   };
 
-  const handleMetaChange = (plan: "standard" | "pro", field: "title" | "badge", val: string) => {
+  const handleDeletePlan = (id: string) => {
     setLocal({
       ...local,
-      planMeta: {
-        ...local.planMeta,
-        [plan]: { ...local.planMeta[plan], [field]: val }
-      }
+      plans: local.plans.filter(p => p.id !== id)
+    });
+  };
+
+  const handlePlanChange = (id: string, field: keyof AdminPlan, val: any) => {
+    setLocal({
+      ...local,
+      plans: local.plans.map(p => {
+        if (p.id !== id) return p;
+        return { ...p, [field]: val };
+      })
     });
   };
 
@@ -495,14 +513,14 @@ function ConfigSettings({ config, onSave }: { config: AdminConfig; onSave: (patc
     const num = parseFloat(val) || 0;
     setLocal({
       ...local,
-      commissionsPct: { ...local.commissionsPct, [field]: num }
+      commissionsPct: { ...local.commissionsPct, [field as any]: num }
     });
   };
 
   const handlePayoutChange = (field: string, val: any) => {
     setLocal({
       ...local,
-      payout: { ...local.payout, [field]: field === "minWithdrawRub" ? parseInt(val) || 0 : val }
+      payout: { ...local.payout, [field as any]: field === "minWithdrawRub" ? parseInt(val) || 0 : val }
     });
   };
 
@@ -511,80 +529,126 @@ function ConfigSettings({ config, onSave }: { config: AdminConfig; onSave: (patc
       <Card className="p-6">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-bold text-white">Тарифы и цены</h2>
-          <Button onClick={() => onSave(local)}>
-            <Save size={16} className="mr-2" />
-            Сохранить всё
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={handleAddPlan}>
+              + Добавить тариф
+            </Button>
+            <Button onClick={() => onSave(local)}>
+              <Save size={16} className="mr-2" />
+              Сохранить всё
+            </Button>
+          </div>
         </div>
 
         <div className="grid gap-6 md:grid-cols-2">
-          {/* Standard Plan */}
-          <div className="space-y-4 rounded-xl border border-white/5 bg-white/2 p-4">
-            <h3 className="text-sm font-semibold text-neonBlue">Тариф: Standard</h3>
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs text-white/50">Название в UI</label>
-                <input
-                  type="text"
-                  value={local.planMeta.standard.title}
-                  onChange={(e) => handleMetaChange("standard", "title", e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonBlue/50"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-white/50">Цена (₽)</label>
-                <input
-                  type="number"
-                  value={local.planPricesRub.standard}
-                  onChange={(e) => handlePriceChange("standard", e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonBlue/50"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-white/50">Бейдж (опционально)</label>
-                <input
-                  type="text"
-                  value={local.planMeta.standard.badge || ""}
-                  onChange={(e) => handleMetaChange("standard", "badge", e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonBlue/50"
-                />
-              </div>
-            </div>
-          </div>
+          {local.plans.map((plan) => (
+            <div key={plan.id} className="relative space-y-4 rounded-xl border border-white/5 bg-white/2 p-4">
+              <button 
+                onClick={() => handleDeletePlan(plan.id)}
+                className="absolute right-4 top-4 text-white/20 hover:text-red-400"
+              >
+                <Trash2 size={16} />
+              </button>
+              
+              <h3 className={cn("text-sm font-semibold", plan.grantsPartner ? "text-neonViolet" : "text-neonBlue")}>
+                Тариф: {plan.title}
+              </h3>
+              
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-white/50">ID (slug)</label>
+                    <input
+                      type="text"
+                      value={plan.id}
+                      onChange={(e) => handlePlanChange(plan.id, "id", e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonBlue/50"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-white/50">Название в UI</label>
+                    <input
+                      type="text"
+                      value={plan.title}
+                      onChange={(e) => handlePlanChange(plan.id, "title", e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonBlue/50"
+                    />
+                  </div>
+                </div>
 
-          {/* Pro Plan */}
-          <div className="space-y-4 rounded-xl border border-white/5 bg-white/2 p-4">
-            <h3 className="text-sm font-semibold text-neonViolet">Тариф: PRO</h3>
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs text-white/50">Название в UI</label>
-                <input
-                  type="text"
-                  value={local.planMeta.pro.title}
-                  onChange={(e) => handleMetaChange("pro", "title", e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonViolet/50"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-white/50">Цена (₽)</label>
-                <input
-                  type="number"
-                  value={local.planPricesRub.pro}
-                  onChange={(e) => handlePriceChange("pro", e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonViolet/50"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-white/50">Бейдж (опционально)</label>
-                <input
-                  type="text"
-                  value={local.planMeta.pro.badge || ""}
-                  onChange={(e) => handleMetaChange("pro", "badge", e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonViolet/50"
-                />
+                <div>
+                  <label className="text-xs text-white/50">Слоган</label>
+                  <input
+                    type="text"
+                    value={plan.tagline}
+                    onChange={(e) => handlePlanChange(plan.id, "tagline", e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonBlue/50"
+                  />
+                </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-xs text-white/50">Цена (₽)</label>
+                    <input
+                      type="number"
+                      value={plan.priceRub}
+                      onChange={(e) => handlePlanChange(plan.id, "priceRub", parseInt(e.target.value) || 0)}
+                      className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonBlue/50"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-white/50">Токены</label>
+                    <input
+                      type="number"
+                      value={plan.tokens}
+                      onChange={(e) => handlePlanChange(plan.id, "tokens", parseInt(e.target.value) || 0)}
+                      className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonBlue/50"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-white/50">Кол-во фото</label>
+                    <input
+                      type="number"
+                      value={plan.photosCount}
+                      onChange={(e) => handlePlanChange(plan.id, "photosCount", parseInt(e.target.value) || 0)}
+                      className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonBlue/50"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4">
+                  <label className="flex cursor-pointer items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={plan.grantsPartner}
+                      onChange={(e) => handlePlanChange(plan.id, "grantsPartner", e.target.checked)}
+                      className="h-4 w-4 rounded border-white/10 bg-white/5 text-neonViolet focus:ring-neonViolet/30"
+                    />
+                    <span className="text-xs text-white/70">Доступ к партнерке</span>
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={plan.featured}
+                      onChange={(e) => handlePlanChange(plan.id, "featured", e.target.checked)}
+                      className="h-4 w-4 rounded border-white/10 bg-white/5 text-neonBlue focus:ring-neonBlue/30"
+                    />
+                    <span className="text-xs text-white/70">Выделенный</span>
+                  </label>
+                </div>
+
+                <div>
+                  <label className="text-xs text-white/50">Бейдж (например, "Хит")</label>
+                  <input
+                    type="text"
+                    value={plan.badge || ""}
+                    onChange={(e) => handlePlanChange(plan.id, "badge", e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonBlue/50"
+                  />
+                </div>
               </div>
             </div>
-          </div>
+          ))}
         </div>
       </Card>
 

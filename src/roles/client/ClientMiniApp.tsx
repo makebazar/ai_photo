@@ -117,10 +117,8 @@ function Pill({
 export function ClientMiniApp() {
   const toast = useToast();
   const cfg = usePublicConfig();
-  const priceStandard = cfg.planPricesRub.standard;
-  const pricePro = cfg.planPricesRub.pro;
-  const metaStandard = cfg.planMeta.standard;
-  const metaPro = cfg.planMeta.pro;
+  const plans = cfg.plans || [];
+  
   const hydratedInitial = React.useMemo(() => {
     const persisted = readLocalStorage<{
       plan?: typeof initialClientState.plan;
@@ -345,8 +343,8 @@ export function ClientMiniApp() {
       if (busy) return;
 
       setBusy("gen");
-      // Mock photo generation - in production use real API
-      const photos: MockPhoto[] = Array.from({ length: state.plan === "pro" ? 30 : 20 }).map((_, i) => ({
+      const activePlan = plans.find(p => p.id === state.plan) || plans[0];
+      const photos: MockPhoto[] = Array.from({ length: activePlan?.photosCount || 20 }).map((_, i) => ({
         id: `photo_${Date.now()}_${i}`,
         url: `https://via.placeholder.com/512x512?text=Photo+${i + 1}`,
         label: `Photo ${i + 1}`,
@@ -647,53 +645,35 @@ export function ClientMiniApp() {
               <Card className="p-4">
                 <SectionHeader title="Тарифы" right={<span>Выберите перед оплатой</span>} />
                 <div className="mt-3 grid gap-2">
-	                  <button
-	                    className={cn(
-	                      "text-left rounded-2xl border border-stroke bg-white/4 p-4 transition hover:bg-white/6",
-	                      state.plan === "standard" &&
-	                        "shadow-neon ring-1 ring-neonBlue/30 bg-white/6",
-	                    )}
-	                    onClick={() => dispatch({ type: "select_plan", plan: "standard" })}
-	                    aria-pressed={state.plan === "standard"}
-	                  >
-	                    <div className="flex items-start justify-between gap-3">
-	                      <div className="min-w-0">
-	                        <div className="text-sm font-semibold text-white/95">{metaStandard.title}</div>
-	                        <div className="mt-1 text-xs text-white/65">{photosPerPlan("standard")} фото</div>
-	                      </div>
-	                      <div className="flex shrink-0 items-center gap-2 whitespace-nowrap">
-	                        <div className="text-sm font-semibold text-white/90">{rub(priceStandard)}</div>
-	                      </div>
-	                    </div>
-	                  </button>
-
-	                  <button
-	                    className={cn(
-	                      "relative overflow-hidden text-left rounded-2xl border border-stroke bg-white/4 p-4 transition hover:bg-white/6",
-	                      state.plan === "pro" &&
-	                        "shadow-pro ring-1 ring-neonViolet/30 bg-white/6",
-	                    )}
-	                    onClick={() => dispatch({ type: "select_plan", plan: "pro" })}
-	                    aria-pressed={state.plan === "pro"}
-	                  >
-	                    <div className="flex items-start justify-between gap-3">
-	                      <div className="min-w-0">
-	                        <div className="flex items-center gap-2">
-	                          <div className="truncate text-sm font-semibold text-white/95">{metaPro.title}</div>
-	                          {metaPro.badge ? (
-	                            <Badge className="shrink-0 border-neonViolet/30 bg-neonViolet/12 text-white">
-	                              <Crown size={14} />
-	                              {metaPro.badge}
-	                            </Badge>
-	                          ) : null}
-	                        </div>
-	                        <div className="mt-1 text-xs text-white/65">{photosPerPlan("pro")} фото</div>
-	                      </div>
-	                      <div className="flex shrink-0 items-center gap-2 whitespace-nowrap">
-	                        <div className="text-sm font-semibold text-white/90">{rub(pricePro)}</div>
-	                      </div>
-	                    </div>
-	                  </button>
+                  {plans.map((p) => (
+                    <button
+                      key={p.id}
+                      className={cn(
+                        "relative overflow-hidden text-left rounded-2xl border border-stroke bg-white/4 p-4 transition hover:bg-white/6",
+                        state.plan === p.id && (p.featured ? "shadow-pro ring-1 ring-neonViolet/30 bg-white/6" : "shadow-neon ring-1 ring-neonBlue/30 bg-white/6"),
+                      )}
+                      onClick={() => dispatch({ type: "select_plan", plan: p.id as PlanId })}
+                      aria-pressed={state.plan === p.id}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <div className="truncate text-sm font-semibold text-white/95">{p.title}</div>
+                            {p.badge ? (
+                              <Badge className={cn("shrink-0", p.featured ? "border-neonViolet/30 bg-neonViolet/12 text-white" : "border-neonBlue/30 bg-neonBlue/12 text-white")}>
+                                {p.featured && <Crown size={14} />}
+                                {p.badge}
+                              </Badge>
+                            ) : null}
+                          </div>
+                          <div className="mt-1 text-xs text-white/65">{p.photosCount} фото • {p.tokens} токенов</div>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2 whitespace-nowrap">
+                          <div className="text-sm font-semibold text-white/90">{rub(p.priceRub)}</div>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
                 </div>
               </Card>
             ) : null}
@@ -817,53 +797,35 @@ export function ClientMiniApp() {
             <div className="grid gap-3">
               <div className="text-sm font-semibold text-white/90">Тарифы</div>
               <div className="grid gap-3">
-	                <button
-	                  className={cn(
-	                    "text-left rounded-2xl border border-stroke bg-white/4 p-4 transition hover:bg-white/6",
-	                    state.plan === "standard" &&
-	                      "shadow-neon ring-1 ring-neonBlue/30 bg-white/6",
-	                  )}
-	                  onClick={() => dispatch({ type: "select_plan", plan: "standard" })}
-	                  aria-pressed={state.plan === "standard"}
-	                >
-	                  <div className="flex items-start justify-between gap-3">
-	                    <div className="min-w-0">
-	                      <div className="text-sm font-semibold text-white/95">{metaStandard.title}</div>
-	                      <div className="mt-1 text-xs text-white/65">{photosPerPlan("standard")} фото</div>
-	                    </div>
-	                    <div className="flex shrink-0 items-center gap-2 whitespace-nowrap">
-	                      <div className="text-sm font-semibold text-white/90">{rub(priceStandard)}</div>
-	                    </div>
-	                  </div>
-	                </button>
-
-	                <button
-	                  className={cn(
-	                    "relative overflow-hidden text-left rounded-2xl border border-stroke bg-gradient-to-b from-white/7 to-white/3 p-4 transition hover:from-white/8 hover:to-white/4",
-	                    state.plan === "pro" &&
-	                      "shadow-pro ring-1 ring-neonViolet/30",
-	                  )}
-	                  onClick={() => dispatch({ type: "select_plan", plan: "pro" })}
-	                  aria-pressed={state.plan === "pro"}
-	                >
-	                  <div className="relative flex items-start justify-between gap-3">
-	                    <div className="min-w-0">
-	                      <div className="flex items-center gap-2">
-	                        <div className="truncate text-sm font-semibold text-white/95">{metaPro.title}</div>
-	                        {metaPro.badge ? (
-	                          <Badge className="shrink-0 border-neonViolet/30 bg-neonViolet/12 text-white">
-	                            <Crown size={14} />
-	                            {metaPro.badge}
-	                          </Badge>
-	                        ) : null}
-	                      </div>
-	                      <div className="mt-1 text-xs text-white/65">{photosPerPlan("pro")} фото</div>
-	                    </div>
-	                    <div className="flex shrink-0 items-center gap-2 whitespace-nowrap">
-	                      <div className="text-sm font-semibold text-white/90">{rub(pricePro)}</div>
-	                    </div>
-	                  </div>
-	                </button>
+                {plans.map((p) => (
+                  <button
+                    key={p.id}
+                    className={cn(
+                      "relative overflow-hidden text-left rounded-2xl border border-stroke bg-white/4 p-4 transition hover:bg-white/6",
+                      state.plan === p.id && (p.featured ? "shadow-pro ring-1 ring-neonViolet/30 bg-white/6" : "shadow-neon ring-1 ring-neonBlue/30 bg-white/6"),
+                    )}
+                    onClick={() => dispatch({ type: "select_plan", plan: p.id as any })}
+                    aria-pressed={state.plan === p.id}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <div className="truncate text-sm font-semibold text-white/95">{p.title}</div>
+                          {p.badge ? (
+                            <Badge className={cn("shrink-0", p.featured ? "border-neonViolet/30 bg-neonViolet/12 text-white" : "border-neonBlue/30 bg-neonBlue/12 text-white")}>
+                              {p.featured && <Crown size={14} />}
+                              {p.badge}
+                            </Badge>
+                          ) : null}
+                        </div>
+                        <div className="mt-1 text-xs text-white/65">{p.photosCount} фото • {p.tokens} токенов</div>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2 whitespace-nowrap">
+                        <div className="text-sm font-semibold text-white/90">{rub(p.priceRub)}</div>
+                      </div>
+                    </div>
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -893,7 +855,7 @@ export function ClientMiniApp() {
 	                    </>
 	                  ) : (
 	                    <>
-	                      Оплатить {rub(state.plan === "pro" ? pricePro : priceStandard)}
+	                      Оплатить {rub(plans.find(p => p.id === state.plan)?.priceRub || 0)}
 	                    </>
 	                  )}
 	                </Button>

@@ -1,15 +1,28 @@
 const DEFAULT_CONFIG = {
-  planPricesRub: { standard: 499, pro: 899 },
-  planMeta: {
-    standard: { title: "Стандарт", tagline: "Быстро, красиво и натурально.", photosCount: 20 },
-    pro: {
+  plans: [
+    {
+      id: "standard",
+      slug: "standard",
+      title: "Стандарт",
+      tagline: "Быстро, красиво и натурально.",
+      priceRub: 499,
+      tokens: 30,
+      photosCount: 20,
+      grantsPartner: false,
+    },
+    {
+      id: "pro",
+      slug: "pro",
       title: "PRO / Кинематографичный",
       tagline: "Максимум деталей и “киношный” свет.",
+      priceRub: 899,
+      tokens: 100,
       photosCount: 30,
       featured: true,
       badge: "Хит",
+      grantsPartner: true,
     },
-  },
+  ],
   commissionsPct: { directClient: 30, teamL1: 10, teamL2: 5 },
   payout: { minWithdrawRub: 500, slaText: "Обычно 1–6 часов (анти‑фрод)" },
 };
@@ -32,8 +45,7 @@ export async function readConfig(db) {
   return {
     ...DEFAULT_CONFIG,
     ...cfg,
-    planPricesRub: { ...DEFAULT_CONFIG.planPricesRub, ...(cfg.planPricesRub ?? {}) },
-    planMeta: { ...DEFAULT_CONFIG.planMeta, ...(cfg.planMeta ?? {}) },
+    plans: Array.isArray(cfg.plans) ? cfg.plans : DEFAULT_CONFIG.plans,
     commissionsPct: { ...DEFAULT_CONFIG.commissionsPct, ...(cfg.commissionsPct ?? {}) },
     payout: { ...DEFAULT_CONFIG.payout, ...(cfg.payout ?? {}) },
   };

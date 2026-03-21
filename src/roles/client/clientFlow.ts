@@ -1,6 +1,6 @@
 import { loadPublicConfig } from "../../lib/publicConfig";
 
-export type PlanId = "standard" | "pro";
+export type PlanId = string;
 
 export type MockPhoto = {
   id: string;
@@ -8,9 +8,10 @@ export type MockPhoto = {
   label: string;
 };
 
-export function photosPerPlan(plan: PlanId) {
+export function photosPerPlan(planId: PlanId) {
   const cfg = loadPublicConfig();
-  return plan === "pro" ? 30 : 20;
+  const plan = cfg.plans.find(p => p.id === planId);
+  return plan?.photosCount || 20;
 }
 
 export type Order = {
@@ -108,7 +109,7 @@ export type ClientState = {
 
 export const initialClientState: ClientState = {
   view: "home",
-  plan: "pro",
+  plan: "standard",
   avatar: { status: "none" },
   order: null,
   dataset: { minRequired: 4, maxAllowed: 30, uploaded: 0, status: "idle" },
@@ -116,7 +117,7 @@ export const initialClientState: ClientState = {
   pendingStyleId: null,
   pendingCustomPrompt: "",
   pendingCustomNegative: "",
-  pendingCustomCount: photosPerPlan("pro"),
+  pendingCustomCount: 20,
   pendingCustomAspect: "2:3",
   pendingEnhance: true,
   pendingCustomCfgScale: 6.5,
