@@ -276,6 +276,10 @@ export async function allocateCommissionsForOrder(db, orderId) {
   const isUuid = (str) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
   const ownerId = isUuid(cfg.mlm?.ownerPartnerId) ? cfg.mlm.ownerPartnerId : null;
 
+  let payouts = [];
+  const partnerPct = cfg.commissionsPct.partner || 20;
+  const parentPct = cfg.commissionsPct.parent || 10;
+
   if (!directPartnerId) {
     const { rows: attrRows } = await db.query(`select partner_id from client_attribution where user_id = $1`, [
       order.user_id,
@@ -283,45 +287,44 @@ export async function allocateCommissionsForOrder(db, orderId) {
     directPartnerId = attrRows?.[0]?.partner_id ?? null;
   }
   
-  if (!directPartnerId) {
-    directPartnerId = ownerId;
-  }
-  
-  if (!directPartnerId) return { ok: true, commissions: 0 };
-
-  // Resolve direct partner status.
-  const { rows: partnerRows } = await db.query(
-    `select p.id, p.parent_partner_id, p.status, p.user_id as partner_user_id 
-     from partners p where p.id = $1`, 
-    [directPartnerId]
-  );
-  const directPartner = partnerRows[0];
-  if (!directPartner) return { ok: true, commissions: 0 };
-
-  // LOGIC: PASS-UP
-  let actualPartnerId = directPartnerId;
-  let uplinePartnerId = directPartner.parent_partner_id ?? ownerId ?? null;
-
-
-  const partnerPct = cfg.commissionsPct.partner || 20;
-  const parentPct = cfg.commissionsPct.parent || 10;
-
-  const payouts = [
-    {
-      partnerId: actualPartnerId,
-      level: 0,
-      percent: partnerPct,
-      linkId: directLinkId,
-    },
-    uplinePartnerId
-      ? {
-          partnerId: uplinePartnerId,
+  if (directPartnerId) {
+    // Resolve direct partner status.
+    const { rows: partnerRows } = await db.query(
+      `select p.id, p.parent_partner_id from partners p where p.id = $1`, 
+      [directPartnerId]
+    );
+    const directPartner = partnerRows[0];
+    
+    if (directPartner) {
+      payouts.push({
+        partnerId: directPartner.id,
+        level: 0,
+        percent: partnerPct,
+        linkId: directLinkId,
+      });
+      
+      const uplineId = directPartner.parent_partner_id ?? ownerId;
+      if (uplineId) {
+        payouts.push({
+          partnerId: uplineId,
           level: 1,
           percent: parentPct,
           linkId: null,
-        }
-      : null,
-  ].filter(Boolean);
+        });
+      }
+    }
+  } else if (ownerId) {
+    // No direct partner -> only the owner gets the "platform" share (10%)
+    payouts.push({
+      partnerId: ownerId,
+      level: 1,
+      percent: parentPct,
+      linkId: null,
+    });
+  }
+
+  if (payouts.length === 0) return { ok: true, commissions: 0 };
+
 
 
 
@@ -359,21 +362,12 @@ export async function allocateCommissionsForOrder(db, orderId) {
       [p.partnerId, p.level === 0 ? "commission.direct" : p.level === 1 ? "commission.team_l1" : "commission.team_l2", amountRub, order.id, JSON.stringify({ percent: p.percent, level: p.level, status: 'locked', unlock_at: unlockAt })],
     );
 
-    await db.query(
-      `insert into partner_balances (partner_id, available_rub, locked_rub, paid_out_rub)
-       values ($1, 0, 0, 0)
-       on conflict (partner_id) do nothing`,
-      [p.partnerId],
-    );
-    
-    // Add to locked_rub (instead of available_rub)
-    await db.query(
-      `update partner_balances set locked_rub = locked_rub + $2, updated_at = now() where partner_id = $1`,
-      [p.partnerId, amountRub],
-    );
+    // Recalculate partner balance (safer than running total)
+    await db.query(`select recalculate_partner_balance($1)`, [p.partnerId]);
     
     // Update partner stats (rank, total earnings, etc)
     await db.query(`select update_partner_stats($1)`, [p.partnerId]);
+
 
     // Send notification
     const emoji = p.level === 0 ? "💰" : "🤝";
