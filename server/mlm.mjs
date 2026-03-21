@@ -266,6 +266,9 @@ export async function allocateCommissionsForOrder(db, orderId) {
     }
   }
   
+  const isUuid = (str) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+  const ownerId = isUuid(cfg.mlm?.ownerPartnerId) ? cfg.mlm.ownerPartnerId : null;
+
   if (!directPartnerId) {
     const { rows: attrRows } = await db.query(`select partner_id from client_attribution where user_id = $1`, [
       order.user_id,
@@ -274,7 +277,7 @@ export async function allocateCommissionsForOrder(db, orderId) {
   }
   
   if (!directPartnerId) {
-    directPartnerId = cfg.mlm?.ownerPartnerId ?? null;
+    directPartnerId = ownerId;
   }
   
   if (!directPartnerId) return { ok: true, commissions: 0 };
@@ -289,10 +292,9 @@ export async function allocateCommissionsForOrder(db, orderId) {
   if (!directPartner) return { ok: true, commissions: 0 };
 
   // LOGIC: PASS-UP
-  // If the referrer (the one who gave the link) is NOT a partner yet, 
-  // they "miss" the commission, and it goes to the directPartnerId (who invited the referrer).
   let actualPartnerId = directPartnerId;
-  let uplinePartnerId = directPartner.parent_partner_id ?? cfg.mlm?.ownerPartnerId ?? null;
+  let uplinePartnerId = directPartner.parent_partner_id ?? ownerId ?? null;
+
 
   const partnerPct = cfg.commissionsPct.partner || 20;
   const parentPct = cfg.commissionsPct.parent || 10;

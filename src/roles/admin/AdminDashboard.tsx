@@ -41,7 +41,13 @@ function MlmSettings({ config, partners, onSave }: { config: AdminConfig; partne
   const [local, setLocal] = React.useState(config);
 
   React.useEffect(() => {
-    setLocal(config);
+    // Basic UUID validation for loaded config
+    const isUuid = (str: any) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+    if (config.mlm?.ownerPartnerId && !isUuid(config.mlm.ownerPartnerId)) {
+      setLocal({ ...config, mlm: { ...config.mlm, ownerPartnerId: null } });
+    } else {
+      setLocal(config);
+    }
   }, [config]);
 
   const totalCommission = (local.commissionsPct?.partner || 0) + (local.commissionsPct?.parent || 0);
@@ -116,8 +122,8 @@ function MlmSettings({ config, partners, onSave }: { config: AdminConfig; partne
               >
                 <option value="">Не выбран (деньги остаются в системе)</option>
                 {partners.map(p => (
-                  <option key={p.id} value={p.id}>
-                    {p.username ? `@${p.username}` : `ID: ${p.public_id}`} (Владелец)
+                  <option key={p.userId} value={p.userId}>
+                    {p.username ? `@${p.username}` : `ID: ${p.partnerId}`} (Владелец)
                   </option>
                 ))}
               </select>
