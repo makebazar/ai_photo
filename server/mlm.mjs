@@ -321,7 +321,7 @@ export async function allocateCommissionsForOrder(db, orderId) {
 
 
   let created = 0;
-  let totalEarnings = 0;
+  let partnerDirectEarnings = 0;
 
   for (const p of payouts) {
     const amountRub = computeCommissionAmount(order.amount_rub, p.percent);
@@ -339,7 +339,12 @@ export async function allocateCommissionsForOrder(db, orderId) {
 
     if (!insertRows.length) continue;
     created += 1;
-    totalEarnings += amountRub;
+    
+    // If this is the direct partner (level 0), track their earnings for the link stats
+    if (p.level === 0) {
+      partnerDirectEarnings = amountRub;
+    }
+
 
     await db.query(
       `insert into partner_ledger (partner_id, entry_type, amount_rub, order_id, meta)
@@ -397,8 +402,9 @@ export async function allocateCommissionsForOrder(db, orderId) {
       linkId: directLinkId,
       orderId,
       amountRub: order.amount_rub,
-      earningsRub: totalEarnings,
+      earningsRub: partnerDirectEarnings,
     });
+
   }
 
   return { ok: true, commissions: created };
