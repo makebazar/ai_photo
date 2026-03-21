@@ -392,6 +392,7 @@ export function useAdminStore() {
       plans: state.config.plans,
       commissionsPct: state.config.commissionsPct,
       payout: state.config.payout,
+      costs: state.config.costs,
       packs: state.packs,
       promos: state.promos,
     });
