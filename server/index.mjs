@@ -41,7 +41,8 @@ async function upsertUser(db, { tgId, username }) {
 
 // Helper for generating Telegram links
 function makeTgLink(botName, code, kind) {
-  const defaultBot = kind === 'team' ? 'ai_photo_testast_partner_bot' : 'ai_photo_testast_bot';
+  // Use the main client bot for client links
+  const defaultBot = kind === 'team' ? (process.env.TELEGRAM_PARTNER_BOT_NAME || 'ai_photo_testast_partner_bot') : (process.env.TELEGRAM_BOT_NAME || 'ai_photo_testast_bot');
   const name = botName || defaultBot;
   const appName = process.env.TELEGRAM_APP_NAME;
   
@@ -52,6 +53,7 @@ function makeTgLink(botName, code, kind) {
   // This works if the Mini App is the "Main Mini App" of the bot
   return `https://t.me/${name}?startapp=${code}`;
 }
+
 
 async function resolvePartnerByCode(db, code) {
   const result = await resolveReferralCode(db, code);
