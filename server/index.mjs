@@ -12,6 +12,18 @@ import { httpError } from "./http.mjs";
 
 const pool = makePool();
 
+/**
+ * Placeholder for Astria AI model status check.
+ * In production: will call https://api.astria.ai/tunes/:id
+ */
+async function checkAstriaModelStatus(modelId) {
+  if (!modelId) return "none";
+  console.log(`[Astria AI] Checking status for model: ${modelId}`);
+  // Logic stub: assume model exists if we have its ID
+  // In real implementation: if 404 from Astria -> return "deleted"
+  return "active";
+}
+
 async function upsertUser(db, { tgId, username }) {
   const { rows } = await db.query(
     `
@@ -953,6 +965,16 @@ async function main() {
         partner = await ensurePartner(db, { userId: user.id, teamCode });
       }
 
+      const avatarRows = await db.query(
+        `select id, status, astria_model_id from avatars where user_id = $1`,
+        [user.id]
+      );
+      const avatar = avatarRows.rows[0];
+      let astriaStatus = "none";
+      if (avatar?.astria_model_id) {
+        astriaStatus = await checkAstriaModelStatus(avatar.astria_model_id);
+      }
+
       return {
         user: {
           id: user.id,
@@ -960,6 +982,7 @@ async function main() {
           username: user.username,
           tokensBalance: user.tokens_balance,
           avatarAccessExpiresAt: user.avatar_access_expires_at,
+          astriaStatus, // Sync status with Astria
         },
         partner: partner ? {
           id: partner.id,

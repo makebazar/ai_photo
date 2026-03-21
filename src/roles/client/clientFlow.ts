@@ -103,6 +103,7 @@ export type ClientState = {
   pendingCustomFaceFix: boolean;
   tokensBalance: number;
   avatarAccessExpiresAt: string | null;
+  astriaStatus: string;
   generating: Generating;
   sessions: PhotoSession[];
   activeSessionId: string | null;
@@ -126,6 +127,7 @@ export const initialClientState: ClientState = {
   pendingCustomFaceFix: true,
   tokensBalance: 0,
   avatarAccessExpiresAt: null,
+  astriaStatus: "none",
   generating: { status: "idle", progress: 0, etaSeconds: 0 },
   sessions: [],
   activeSessionId: null,
@@ -133,7 +135,7 @@ export const initialClientState: ClientState = {
 
 export type ClientAction =
   | { type: "nav"; view: ClientView }
-  | { type: "set_profile"; tokensBalance: number; avatarAccessExpiresAt: string | null }
+  | { type: "set_profile"; tokensBalance: number; avatarAccessExpiresAt: string | null; astriaStatus: string }
   | { type: "select_plan"; plan: PlanId }
   | { type: "order_created"; order: Order }
   | { type: "order_paid"; paidAt: number }
@@ -170,7 +172,12 @@ export function clientReducer(state: ClientState, action: ClientAction): ClientS
     case "nav":
       return { ...state, view: action.view };
     case "set_profile":
-      return { ...state, tokensBalance: action.tokensBalance, avatarAccessExpiresAt: action.avatarAccessExpiresAt };
+      return { 
+        ...state, 
+        tokensBalance: action.tokensBalance, 
+        avatarAccessExpiresAt: action.avatarAccessExpiresAt,
+        astriaStatus: action.astriaStatus
+      };
     case "select_plan":
       return {
         ...state,

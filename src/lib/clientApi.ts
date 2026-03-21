@@ -103,6 +103,7 @@ export type ClientProfile = {
     username: string | null;
     tokensBalance: number;
     avatarAccessExpiresAt?: string | null;
+    astriaStatus?: string;
   };
   partner: any | null;
   attribution: any | null;

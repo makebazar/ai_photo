@@ -3,6 +3,8 @@ import {
   ArrowLeft,
   ArrowRight,
   CheckCircle2,
+  CloudOff,
+  RefreshCcw,
   Crown,
   Image as ImageIcon,
   Loader2,
@@ -201,7 +203,8 @@ export function ClientMiniApp() {
       dispatch({ 
         type: "set_profile", 
         tokensBalance: profile.user.tokensBalance,
-        avatarAccessExpiresAt: profile.user.avatarAccessExpiresAt || null
+        avatarAccessExpiresAt: profile.user.avatarAccessExpiresAt || null,
+        astriaStatus: profile.user.astriaStatus || "none"
       });
     } catch (err) {
       console.error("[Client] Failed to fetch profile:", err);
@@ -464,7 +467,8 @@ export function ClientMiniApp() {
       dispatch({ 
         type: "set_profile", 
         tokensBalance: state.tokensBalance - data.spent,
-        avatarAccessExpiresAt: state.avatarAccessExpiresAt 
+        avatarAccessExpiresAt: state.avatarAccessExpiresAt,
+        astriaStatus: state.astriaStatus
       });
       
       go("generating");
@@ -674,10 +678,23 @@ export function ClientMiniApp() {
                   <div className="flex items-center justify-between gap-3">
                     <div className="text-sm font-semibold text-white/95">Твой аватар</div>
                     {state.avatar.status === "ready" ? (
-                      <Pill tone="good">
-                        <CheckCircle2 size={12} />
-                        Готов
-                      </Pill>
+                      <div className="flex items-center gap-2">
+                        {state.astriaStatus === "active" ? (
+                          <Badge className="border-green-500/30 bg-green-500/10 text-green-400">
+                            <RefreshCcw size={12} className="mr-1" />
+                            Astria: OK
+                          </Badge>
+                        ) : state.astriaStatus === "deleted" ? (
+                          <Badge className="border-red-500/30 bg-red-500/10 text-red-400">
+                            <CloudOff size={12} className="mr-1" />
+                            Удален
+                          </Badge>
+                        ) : null}
+                        <Pill tone="good">
+                          <CheckCircle2 size={12} />
+                          Готов
+                        </Pill>
+                      </div>
                     ) : (
                       <Pill>
                         <Lock size={12} />
