@@ -22,7 +22,10 @@ const DEFAULT_CONFIG = {
     },
   ],
   commissionsPct: { partner: 20, parent: 10 },
-    mlm: { holdDays: 14 },
+  mlm: { 
+    holdDays: 14,
+    ownerPartnerId: null // Global owner account UUID
+  },
   payout: { minWithdrawRub: 500, slaText: "Обычно 1–6 часов (анти‑фрод)" },
   costs: {
     avatarTokens: 50, // Cost to unlock avatar training/access

@@ -13,6 +13,9 @@ import {
   Trash2,
   Settings,
   Save,
+  ArrowRight,
+  Wallet,
+  User,
 } from "lucide-react";
 import * as React from "react";
 import { Badge } from "../../components/ui/Badge";
@@ -33,6 +36,150 @@ import {
 
 const ADMIN_PASSWORD = "admin123"; // Простой пароль для прототипа
 const LS_AUTH_KEY = "ai_photo_admin_auth_v1";
+
+function MlmSettings({ config, partners, onSave }: { config: AdminConfig; partners: any[]; onSave: (patch: Partial<AdminConfig>) => void }) {
+  const [local, setLocal] = React.useState(config);
+
+  React.useEffect(() => {
+    setLocal(config);
+  }, [config]);
+
+  const totalCommission = (local.commissionsPct?.partner || 0) + (local.commissionsPct?.parent || 0);
+  const platformShare = 100 - totalCommission;
+
+  return (
+    <Card className="overflow-hidden border-neonViolet/20 bg-neonViolet/5 p-6">
+      <div className="mb-8 flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-bold text-white">Настройки выплат и Money Flow</h2>
+          <p className="text-sm text-white/50">Управление распределением прибыли и главным аккаунтом</p>
+        </div>
+        <Button onClick={() => onSave(local)}>
+          <Save size={16} className="mr-2" />
+          Сохранить настройки
+        </Button>
+      </div>
+
+      <div className="grid gap-8 lg:grid-cols-2">
+        {/* Left: Inputs */}
+        <div className="space-y-6">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="rounded-2xl border border-white/5 bg-white/5 p-4 transition-colors hover:border-white/10">
+              <label className="mb-2 block text-xs font-medium text-white/40 uppercase tracking-wider">Доля партнёра (L0)</label>
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-neonBlue/20 text-neonBlue">
+                  <User size={20} />
+                </div>
+                <div className="relative flex-1">
+                  <input
+                    type="number"
+                    value={local.commissionsPct?.partner}
+                    onChange={(e) => setLocal({ ...local, commissionsPct: { ...local.commissionsPct, partner: parseFloat(e.target.value) || 0 } })}
+                    className="w-full rounded-xl border border-white/10 bg-white/5 py-2 pl-4 pr-8 text-lg font-bold text-white outline-none focus:border-neonBlue/50"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 font-bold text-white/30">%</span>
+                </div>
+              </div>
+              <p className="mt-2 text-[10px] text-white/30 leading-tight">Тот, кто непосредственно пригласил клиента по ссылке.</p>
+            </div>
+
+            <div className="rounded-2xl border border-white/5 bg-white/5 p-4 transition-colors hover:border-white/10">
+              <label className="mb-2 block text-xs font-medium text-white/40 uppercase tracking-wider">Доля аплайна (L1)</label>
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-neonViolet/20 text-neonViolet">
+                  <ArrowRight size={20} />
+                </div>
+                <div className="relative flex-1">
+                  <input
+                    type="number"
+                    value={local.commissionsPct?.parent}
+                    onChange={(e) => setLocal({ ...local, commissionsPct: { ...local.commissionsPct, parent: parseFloat(e.target.value) || 0 } })}
+                    className="w-full rounded-xl border border-white/10 bg-white/5 py-2 pl-4 pr-8 text-lg font-bold text-white outline-none focus:border-neonViolet/50"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 font-bold text-white/30">%</span>
+                </div>
+              </div>
+              <p className="mt-2 text-[10px] text-white/30 leading-tight">Тот, кто пригласил этого партнёра в команду.</p>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-white/5 bg-white/5 p-4 transition-colors hover:border-white/10">
+            <label className="mb-3 block text-xs font-medium text-white/40 uppercase tracking-wider">Главный аккаунт (Владелец)</label>
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-yellow-500/20 text-yellow-500">
+                <Crown size={20} />
+              </div>
+              <select
+                value={local.mlm?.ownerPartnerId || ""}
+                onChange={(e) => setLocal({ ...local, mlm: { ...local.mlm!, ownerPartnerId: e.target.value || null } })}
+                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white outline-none focus:border-yellow-500/50 appearance-none"
+              >
+                <option value="">Не выбран (деньги остаются в системе)</option>
+                {partners.map(p => (
+                  <option key={p.userId} value={p.userId}>
+                    {p.username ? `@${p.username}` : `ID: ${p.partnerId}`} (Владелец)
+                  </option>
+                ))}
+              </select>
+            </div>
+            <p className="mt-3 text-[11px] text-white/40 leading-relaxed">
+              <span className="text-yellow-500/80 font-semibold">Важно:</span> На этот аккаунт будут стекаться все {local.commissionsPct?.parent}% аплайн-комиссий, если у партнёра нет своего пригласителя. Это ваш основной доходный кошелёк.
+            </p>
+          </div>
+        </div>
+
+        {/* Right: Visual Flow */}
+        <div className="relative flex flex-col items-center justify-center rounded-3xl border border-white/5 bg-black/20 p-8">
+          <div className="mb-12 flex flex-col items-center">
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/10 text-white shadow-lg ring-1 ring-white/20">
+              <ShoppingBag size={32} />
+            </div>
+            <div className="mt-2 text-center">
+              <div className="text-sm font-bold text-white uppercase">Заказ клиента</div>
+              <div className="text-xs text-white/40">100% (например, 1000₽)</div>
+            </div>
+          </div>
+
+          <div className="grid w-full grid-cols-3 gap-4">
+            <div className="flex flex-col items-center text-center">
+              <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-neonBlue/20 text-neonBlue ring-1 ring-neonBlue/30">
+                <User size={24} />
+              </div>
+              <div className="text-[10px] font-bold text-white uppercase">Партнёр</div>
+              <div className="text-lg font-black text-neonBlue leading-none">{local.commissionsPct?.partner}%</div>
+              <div className="text-[9px] text-white/30 mt-1">Прямая продажа</div>
+            </div>
+
+            <div className="flex flex-col items-center text-center">
+              <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-neonViolet/20 text-neonViolet ring-1 ring-neonViolet/30">
+                <Crown size={24} />
+              </div>
+              <div className="text-[10px] font-bold text-white uppercase tracking-tighter">Владелец</div>
+              <div className="text-lg font-black text-neonViolet leading-none">{local.commissionsPct?.parent}%</div>
+              <div className="text-[9px] text-white/30 mt-1">Аплайн / Owner</div>
+            </div>
+
+            <div className="flex flex-col items-center text-center">
+              <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-green-500/20 text-green-500 ring-1 ring-green-500/30">
+                <Wallet size={24} />
+              </div>
+              <div className="text-[10px] font-bold text-white uppercase">Система</div>
+              <div className="text-lg font-black text-green-500 leading-none">{platformShare}%</div>
+              <div className="text-[9px] text-white/30 mt-1">Чистая прибыль</div>
+            </div>
+          </div>
+
+          {/* Connectors (SVG) */}
+          <svg className="absolute inset-0 -z-10 h-full w-full opacity-20" preserveAspectRatio="none">
+            <path d="M 50% 100 L 16% 250" stroke="white" strokeWidth="1" fill="none" strokeDasharray="4 4" />
+            <path d="M 50% 100 L 50% 250" stroke="white" strokeWidth="1" fill="none" strokeDasharray="4 4" />
+            <path d="M 50% 100 L 84% 250" stroke="white" strokeWidth="1" fill="none" strokeDasharray="4 4" />
+          </svg>
+        </div>
+      </div>
+    </Card>
+  );
+}
 
 export function AdminDashboard() {
   const toast = useToast();
@@ -339,7 +486,23 @@ export function AdminDashboard() {
         {nav === "overview" && <Overview state={state} />}
         {nav === "users" && <UsersList users={state.users} onDelete={handleDeleteUser} onAdjustTokens={handleAdjustTokens} />}
         {nav === "orders" && <OrdersList orders={state.orders} />}
-        {nav === "partners" && <PartnersList partners={state.partners} />}
+        {nav === "partners" && (
+          <div className="space-y-6">
+            <MlmSettings config={state.config} partners={state.partners} onSave={(patch) => {
+              setLoading(true);
+              updateAdminConfig(patch)
+                .then((newConfig) => {
+                  dispatch({ type: "config_update", patch: newConfig });
+                  toast.push({ title: "Настройки MLM сохранены", variant: "success" });
+                })
+                .catch((err) => {
+                  toast.push({ title: "Ошибка", description: String(err), variant: "danger" });
+                })
+                .finally(() => setLoading(false));
+            }} />
+            <PartnersList partners={state.partners} />
+          </div>
+        )}
         {nav === "withdrawals" && <WithdrawalsList withdrawals={state.withdrawals} />}
         {nav === "packs" && <PacksList packs={state.packs} />}
         {nav === "promos" && <PromosList promos={state.promos} />}
@@ -503,14 +666,6 @@ function ConfigSettings({ config, onSave }: { config: AdminConfig; onSave: (patc
         if (p.id !== id) return p;
         return { ...p, [field]: val };
       })
-    });
-  };
-
-  const handleCommissionChange = (field: string, val: string) => {
-    const num = parseFloat(val) || 0;
-    setLocal({
-      ...local,
-      commissionsPct: { ...local.commissionsPct, [field as any]: num }
     });
   };
 
@@ -701,64 +856,6 @@ function ConfigSettings({ config, onSave }: { config: AdminConfig; onSave: (patc
           ))}
         </div>
       </Card>
-
-      <Card className="p-6">
-        <div className="mb-4 flex items-center justify-between">
-          <div className="space-y-1">
-            <h2 className="text-lg font-bold text-white">Партнерская программа (%)</h2>
-            <p className="text-xs text-white/40">
-              Логика: Партнёр (кто пригласил клиента) получает свой %, а его пригласитель (аплайн) получает свой %.
-            </p>
-          </div>
-          <Button onClick={() => onSave(local)}>
-            <Save size={16} className="mr-2" />
-            Сохранить %
-          </Button>
-        </div>
-        <div className="grid gap-4 md:grid-cols-2">
-          <div>
-            <label className="text-xs text-white/50">Партнёр (L0) %</label>
-            <input
-              type="number"
-              value={local.commissionsPct.partner}
-              onChange={(e) => handleCommissionChange("partner", e.target.value)}
-              className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonBlue/50"
-            />
-            <p className="mt-1 text-[10px] text-white/30 italic">Например: 20%</p>
-          </div>
-          <div>
-            <label className="text-xs text-white/50">Аплайн (L1) %</label>
-            <input
-              type="number"
-              value={local.commissionsPct.parent}
-              onChange={(e) => handleCommissionChange("parent", e.target.value)}
-              className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonBlue/50"
-            />
-            <p className="mt-1 text-[10px] text-white/30 italic">Например: 10%</p>
-          </div>
-        </div>
-        <div className="mt-6 rounded-xl border border-dashed border-white/10 p-4">
-          <h4 className="mb-2 text-xs font-semibold text-white/60">Визуализация распределения (30% всего):</h4>
-          <div className="flex h-8 w-full overflow-hidden rounded-lg bg-white/5">
-            <div 
-              className="flex h-full items-center justify-center bg-neonBlue/40 text-[10px] font-bold text-white" 
-              style={{ width: `${(local.commissionsPct.partner / 30) * 100}%` }}
-            >
-              Партнёр ({local.commissionsPct.partner}%)
-            </div>
-            <div 
-              className="flex h-full items-center justify-center bg-neonViolet/40 text-[10px] font-bold text-white" 
-              style={{ width: `${(local.commissionsPct.parent / 30) * 100}%` }}
-            >
-              Аплайн ({local.commissionsPct.parent}%)
-            </div>
-            <div className="flex flex-1 items-center justify-center text-[10px] text-white/20">
-              Система
-            </div>
-          </div>
-        </div>
-      </Card>
-
 
       <Card className="p-6">
         <div className="mb-4 flex items-center justify-between">

@@ -20,6 +20,10 @@ export type GenerationModelConfig = {
 export type AdminConfig = {
   plans: AdminPlan[];
   commissionsPct: { partner: number; parent: number };
+  mlm?: {
+    holdDays: number;
+    ownerPartnerId?: string | null;
+  };
   payout: { minWithdrawRub: number; slaText: string };
   costs: { 
     avatarTokens: number; 

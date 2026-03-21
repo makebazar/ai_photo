@@ -254,7 +254,7 @@ export async function allocateCommissionsForOrder(db, orderId) {
   const direct = directRows[0];
   if (!direct) return { ok: true, commissions: 0 };
 
-  const l1PartnerId = direct.parent_partner_id ?? null;
+  const l1PartnerId = direct.parent_partner_id ?? cfg.mlm?.ownerPartnerId ?? null;
 
   const partnerPct = cfg.commissionsPct.partner || 20;
   const parentPct = cfg.commissionsPct.parent || 10;
@@ -266,7 +266,8 @@ export async function allocateCommissionsForOrder(db, orderId) {
       percent: partnerPct,
       linkId: directLinkId,
     },
-    l1PartnerId
+    // If there is an L1 (parent) OR a global owner defined, pay the 10%
+    l1PartnerId && l1PartnerId !== directPartnerId
       ? {
           partnerId: l1PartnerId,
           level: 1,
@@ -275,6 +276,7 @@ export async function allocateCommissionsForOrder(db, orderId) {
         }
       : null,
   ].filter(Boolean);
+
 
 
 

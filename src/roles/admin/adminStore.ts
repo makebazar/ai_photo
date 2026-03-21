@@ -40,6 +40,10 @@ function createEmptyState(): AdminState {
         },
       ],
       commissionsPct: { partner: 20, parent: 10 },
+      mlm: { 
+        holdDays: 14,
+        ownerPartnerId: null
+      },
       payout: { minWithdrawRub: 500, slaText: "Обычно 1–6 часов (анти‑фрод)" },
       costs: { 
         avatarTokens: 50, 
