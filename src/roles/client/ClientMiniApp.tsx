@@ -205,7 +205,9 @@ export function ClientMiniApp() {
         type: "set_profile", 
         tokensBalance: profile.user.tokensBalance,
         avatarAccessExpiresAt: profile.user.avatarAccessExpiresAt || null,
-        astriaStatus: profile.user.astriaStatus || "none"
+        astriaStatus: profile.user.astriaStatus || "none",
+        isPartner: !!profile.partner,
+        partnerPublicId: profile.partner?.publicId || null,
       });
     } catch (err) {
       console.error("[Client] Failed to fetch profile:", err);
@@ -424,7 +426,14 @@ export function ClientMiniApp() {
       });
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
-      dispatch({ type: "set_profile", tokensBalance: state.tokensBalance - data.spent, avatarAccessExpiresAt: state.avatarAccessExpiresAt, astriaStatus: state.astriaStatus });
+      dispatch({ 
+        type: "set_profile", 
+        tokensBalance: state.tokensBalance - data.spent, 
+        avatarAccessExpiresAt: state.avatarAccessExpiresAt, 
+        astriaStatus: state.astriaStatus,
+        isPartner: state.isPartner,
+        partnerPublicId: state.partnerPublicId
+      });
       dispatch({ type: "generating_start" });
       go("generating");
     } catch (err) {
@@ -527,18 +536,36 @@ export function ClientMiniApp() {
         
         <div className="flex items-center gap-2">
           {isAuthenticated && (
-            <button 
-              onClick={() => go("pay")}
-              className="group flex items-center gap-2 rounded-full border border-neonViolet/30 bg-neonViolet/10 py-1 pl-1 pr-3 shadow-[0_0_20px_rgba(139,92,246,0.15)] transition-all active:scale-95 hover:border-neonViolet/50"
-            >
-              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-neonViolet/20 text-neonViolet shadow-inner">
-                <Sparkles size={12} className="group-hover:animate-pulse" />
-              </div>
-              <div className="flex flex-col items-start leading-none">
-                <span className="text-[11px] font-black text-white tracking-tight">{state.tokensBalance}</span>
-                <span className="text-[7px] font-bold text-neonViolet uppercase tracking-tighter">токенов</span>
-              </div>
-            </button>
+            <div className="flex items-center gap-2">
+              {state.isPartner && (
+                <button 
+                  onClick={() => {
+                    const botName = import.meta.env.VITE_PARTNER_BOT_NAME || "ai_photo_testast_partner_bot";
+                    const appName = import.meta.env.VITE_TELEGRAM_APP_NAME;
+                    const url = appName 
+                      ? `https://t.me/${botName}/${appName}`
+                      : `https://t.me/${botName}`;
+                    (window as any).Telegram?.WebApp?.openTelegramLink(url);
+                  }}
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-neonBlue/30 bg-neonBlue/10 text-neonBlue shadow-[0_0_15px_rgba(56,189,248,0.15)] transition-all active:scale-95 hover:border-neonBlue/50"
+                  title="Партнерский кабинет"
+                >
+                  <Crown size={16} />
+                </button>
+              )}
+              <button 
+                onClick={() => go("pay")}
+                className="group flex items-center gap-2 rounded-full border border-neonViolet/30 bg-neonViolet/10 py-1 pl-1 pr-3 shadow-[0_0_20px_rgba(139,92,246,0.15)] transition-all active:scale-95 hover:border-neonViolet/50"
+              >
+                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-neonViolet/20 text-neonViolet shadow-inner">
+                  <Sparkles size={12} className="group-hover:animate-pulse" />
+                </div>
+                <div className="flex flex-col items-start leading-none">
+                  <span className="text-[11px] font-black text-white tracking-tight">{state.tokensBalance}</span>
+                  <span className="text-[7px] font-bold text-neonViolet uppercase tracking-tighter">токенов</span>
+                </div>
+              </button>
+            </div>
           )}
         </div>
       </div>

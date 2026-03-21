@@ -1071,7 +1071,7 @@ async function main() {
     const auth = requireTelegramAuth(req);
     const tgId = Number(auth.user.id);
     const username = auth.user.username ? `@${String(auth.user.username).replace(/^@/, "")}` : body.username ? String(body.username) : null;
-    const planId = body.planId === "pro" ? "pro" : "standard";
+    const planId = body.planId ? String(body.planId) : "standard";
     const clientCode = body.clientCode ? String(body.clientCode) : null;
 
     const order = await withTx(pool, async (db) => {
@@ -1142,14 +1142,14 @@ async function main() {
     const body = req.body ?? {};
     const auth = requireTelegramAuth(req);
     const tgId = Number(auth.user.id);
-    const planId = body.planId === "pro" ? "pro" : "standard";
+    const planId = body.planId ? String(body.planId) : "standard";
     const orderId = body.orderId ? String(body.orderId) : null;
     const mode = body.mode === "custom" ? "custom" : "pack";
     const packId = body.packId ? Number(body.packId) : null;
     const prompt = body.prompt ? String(body.prompt) : null;
     const negative = body.negative ? String(body.negative) : null;
     const settings = body.settings && typeof body.settings === "object" ? body.settings : {};
-    const count = Math.max(1, Math.min(60, Number(settings.count ?? (planId === "pro" ? 30 : 20))));
+    const count = Math.max(1, Math.min(60, Number(settings.count ?? 20)));
 
     const res = await withTx(pool, async (db) => {
       const { rows: uRows } = await db.query(`select id, username from users where tg_id = $1`, [tgId]);
