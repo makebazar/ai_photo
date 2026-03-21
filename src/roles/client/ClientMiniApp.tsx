@@ -425,6 +425,7 @@ export function ClientMiniApp() {
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
       dispatch({ type: "set_profile", tokensBalance: state.tokensBalance - data.spent, avatarAccessExpiresAt: state.avatarAccessExpiresAt, astriaStatus: state.astriaStatus });
+      dispatch({ type: "generating_start" });
       go("generating");
     } catch (err) {
       toast.push({ title: "Ошибка", description: String(err), variant: "danger" });
