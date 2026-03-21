@@ -697,7 +697,7 @@ function ConfigSettings({ config, onSave }: { config: AdminConfig; onSave: (patc
         <h2 className="mb-4 text-lg font-bold text-white">Стоимость в токенах</h2>
         <div className="grid gap-4 md:grid-cols-2">
           <div>
-            <label className="text-xs text-white/50">Разблокировка аватара (навсегда)</label>
+            <label className="text-xs text-white/50">Разблокировка аватара (до удаления)</label>
             <input
               type="number"
               value={local.costs?.avatarTokens || 0}

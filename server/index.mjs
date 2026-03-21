@@ -619,7 +619,7 @@ async function main() {
       await db.query(
         `update users 
          set tokens_balance = tokens_balance - $2,
-             avatar_access_expires_at = now() + interval '1 year'
+             avatar_access_expires_at = now() + interval '100 years'
          where id = $1`,
         [userId, unlockCost]
       );
