@@ -38,7 +38,7 @@ import { Progress } from "../../components/ui/Progress";
 import { SmartImage } from "../../components/ui/SmartImage";
 import { useToast } from "../../components/ui/Toast";
 import { cn } from "../../lib/cn";
-import { usePublicConfig } from "../../lib/publicConfig";
+import { usePublicConfig, fetchPublicConfig } from "../../lib/publicConfig";
 import { readLocalStorage, writeLocalStorage } from "../../lib/storage";
 import { useTelegramAuth } from "../../lib/useTelegramAuth";
 import { Lightbox } from "./Lightbox";
@@ -197,6 +197,14 @@ export function ClientMiniApp() {
   const { isAuthenticated, user, isLoading: authLoading } = useTelegramAuth();
 
   const fetchProfile = React.useCallback(async () => {
+    // 1. Fetch public config first to ensure prices are fresh
+    try {
+      await fetchPublicConfig();
+    } catch (err) {
+      console.error("[Client] Failed to fetch public config:", err);
+    }
+
+    // 2. Fetch user profile if authenticated
     if (!isAuthenticated) return;
     try {
       const profile = await getProfile();

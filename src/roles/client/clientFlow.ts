@@ -125,7 +125,7 @@ export const initialClientState: ClientState = {
   pendingCustomCfgScale: 6.5,
   pendingCustomSteps: 28,
   pendingCustomFaceFix: true,
-  pendingModelId: null,
+  pendingModelId: "sdxl",
   tokensBalance: 0,
   avatarAccessExpiresAt: null,
   astriaStatus: "none",

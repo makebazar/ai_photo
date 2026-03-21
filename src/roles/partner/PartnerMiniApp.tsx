@@ -8,7 +8,7 @@ import { PhoneShell } from "../../components/ui/PhoneShell";
 import { SmartImage } from "../../components/ui/SmartImage";
 import { useToast } from "../../components/ui/Toast";
 import { cn } from "../../lib/cn";
-import { usePublicConfig } from "../../lib/publicConfig";
+import { usePublicConfig, fetchPublicConfig } from "../../lib/publicConfig";
 import { ReferralLinksManager } from "../../components/ReferralLinksManager";
 import { getPartnerStats, getDownline, getClients, type PartnerStats, type DownlinePartner, type ClientItem } from "../../lib/referralApi";
 import { MediaViewer, type MediaItem } from "./MediaViewer";
@@ -67,6 +67,7 @@ export function PartnerMiniApp() {
 
   // Load stats on mount
   React.useEffect(() => {
+    fetchPublicConfig().catch(() => {});
     if (!partner) {
       setStatsLoading(false);
       return;
