@@ -849,19 +849,21 @@ async function main() {
     if (!Number.isFinite(publicId)) throw httpError(400, "publicId invalid");
     
     await withTx(pool, async (db) => {
-      const { rows } = await db.query(`select id from partners where public_id = $1`, [publicId]);
+      const { rows } = await db.query(`select id, parent_partner_id from partners where public_id = $1`, [publicId]);
       const p = rows[0];
       if (!p) throw httpError(404, "partner not found");
 
-      // 1. Update referrals to have no partner (or handle as needed)
-      await db.query(`update referral_clicks set partner_id = null where partner_id = $1`, [p.id]);
-      await db.query(`update client_attribution set partner_id = null where partner_id = $1`, [p.id]);
-      await db.query(`update orders set attribution_partner_id = null where attribution_partner_id = $1`, [p.id]);
-      
-      // 2. Clear hierarchy
-      await db.query(`update partners set parent_partner_id = null where parent_partner_id = $1`, [p.id]);
+      const bossId = p.parent_partner_id; // May be null, if null clients go to the system
 
-      // 3. Delete related records
+      // 1. Transfer referrals to the boss (inheritance)
+      await db.query(`update referral_clicks set partner_id = $2 where partner_id = $1`, [p.id, bossId]);
+      await db.query(`update client_attribution set partner_id = $2 where partner_id = $1`, [p.id, bossId]);
+      await db.query(`update orders set attribution_partner_id = $2 where attribution_partner_id = $1`, [p.id, bossId]);
+      
+      // 2. Transfer sub-partners to the boss (compression)
+      await db.query(`update partners set parent_partner_id = $2 where parent_partner_id = $1`, [p.id, bossId]);
+
+      // 3. Delete related records that are specific to THIS partner
       await db.query(`delete from referral_links where partner_id = $1`, [p.id]);
       await db.query(`delete from commissions where partner_id = $1`, [p.id]);
       await db.query(`delete from partner_balances where partner_id = $1`, [p.id]);
