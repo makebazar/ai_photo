@@ -303,7 +303,7 @@ export async function allocateCommissionsForOrder(db, orderId) {
   if (clickRows[0]) {
     directClickId = clickRows[0].id;
     directLinkId = clickRows[0].link_id;
-    inviterUserId = clickRows[0].referrer_user_id;
+    if (!directPartnerId) inviterUserId = clickRows[0].referrer_user_id;
     if (!directPartnerId) directPartnerId = clickRows[0].partner_id;
   }
 
@@ -528,5 +528,4 @@ export async function reverseCommissionsForOrder(db, orderId, reason = 'refund')
   }
   return reversedCount;
 }
-
 

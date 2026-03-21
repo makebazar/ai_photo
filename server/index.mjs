@@ -7,7 +7,7 @@ import { makePool, withTx } from "./db.mjs";
 import { ensureConfigRow, readConfig } from "./config.mjs";
 import { ensureSeedData } from "./seed.mjs";
 import { allocateCommissionsForOrder, reverseCommissionsForOrder, makeReferralCodes, parseReferralCode, resolveReferralCode, trackReferralClick } from "./mlm.mjs";
-import { requireTelegramAuth } from "./auth.mjs";
+import { getTelegramUser, requireTelegramAuth } from "./auth.mjs";
 import { httpError } from "./http.mjs";
 
 const pool = makePool();
@@ -1786,12 +1786,19 @@ async function handleOrderPaid(db, orderId) {
     const linkId = body.linkId ? String(body.linkId) : null;
     const code = body.code ? String(body.code) : null;
     const utm = body.utm || {};
+    const auth = getTelegramUser(req);
+    const tgId = auth?.user?.id ? Number(auth.user.id) : null;
 
     if (!linkId && !code) {
       throw httpError(400, "linkId or code required");
     }
 
     const result = await withTx(pool, async (db) => {
+      let user = null;
+      if (Number.isFinite(tgId)) {
+        user = await upsertUser(db, { tgId, username: auth?.user?.username ? String(auth.user.username) : null });
+      }
+
       // Use resolveReferralCode to find out what this link/code is
       const resolved = await resolveReferralCode(db, code, { linkId });
       
@@ -1802,11 +1809,16 @@ async function handleOrderPaid(db, orderId) {
       const { clickId } = await trackReferralClick(db, {
         linkId: resolved.linkId || null,
         partnerId: resolved.partnerId || null,
+        userId: user?.id || null,
         referrerUserId: resolved.userId || null,
         kind: resolved.kind,
         code: resolved.code,
         utm: utm,
       });
+
+      if (user?.id && resolved.kind === "client") {
+        await ensureClientAttribution(db, { userId: user.id, clientCode: resolved.code });
+      }
 
       return { linkId: resolved.linkId, clickId };
     });
