@@ -264,8 +264,8 @@ export function ClientMiniApp() {
       });
       return;
     }
-    dispatch({ type: "nav", view: "home" });
-  }, [dispatch, state.generating.status, state.view, toast]);
+    go("home");
+  }, [dispatch, state.generating.status, state.view, toast, go]);
 
   const resumeView = React.useMemo<ClientView>(() => {
     if (state.order?.status === "paid" && state.pendingStyleId) return "style_confirm";
@@ -298,7 +298,41 @@ export function ClientMiniApp() {
   ]);
 
   function startNewPhotosession() {
-    dispatch({ type: "nav", view: "pay" });
+    go("style_list");
+  }
+
+  async function createAvatarFlow() {
+    if (isAvatarActive) {
+      go("upload");
+      return;
+    }
+
+    if (state.tokensBalance < cfg.costs.avatarTokens) {
+      toast.push({
+        title: "Недостаточно токенов",
+        description: `Для создания аватара нужно ${cfg.costs.avatarTokens} токенов. Пожалуйста, пополните баланс.`,
+        variant: "danger",
+      });
+      go("pay");
+      return;
+    }
+
+    try {
+      setBusy("unlock");
+      const res = await fetch(`${API_BASE}/api/client/unlock-avatar`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      
+      toast.push({ title: "Доступ разблокирован!", variant: "success" });
+      await fetchProfile();
+      go("upload");
+    } catch (err) {
+      toast.push({ title: "Ошибка", description: String(err), variant: "danger" });
+    } finally {
+      setBusy(null);
+    }
   }
 
   // Upload simulation
@@ -632,9 +666,9 @@ export function ClientMiniApp() {
       {/* Auth Indicator */}
       <div className="fixed right-4 top-4 z-50 flex items-center gap-2">
         {isAuthenticated && (
-          <Badge className="bg-neonViolet/20 text-neonViolet border-neonViolet/30">
+          <Badge className="bg-neonViolet/20 text-neonViolet border-neonViolet/30 shadow-[0_0_10px_rgba(139,92,246,0.3)]">
             <Sparkles size={12} className="mr-1" />
-            {state.tokensBalance}
+            <span className="font-bold">{state.tokensBalance}</span>
           </Badge>
         )}
         {authLoading ? (
@@ -681,7 +715,7 @@ export function ClientMiniApp() {
             <Card className="relative overflow-hidden p-4">
               <div className="pointer-events-none absolute inset-0 bg-sheen opacity-60" />
               <div className="flex items-start justify-between gap-3">
-                <div className="relative min-w-0">
+                <div className="relative min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-3">
                     <div className="text-sm font-semibold text-white/95">Твой аватар</div>
                     {state.avatar.status === "ready" ? (
@@ -692,31 +726,32 @@ export function ClientMiniApp() {
                     ) : (
                       <Pill>
                         <Lock size={12} />
-                        Нет аватара
+                        {isAvatarActive ? "Оплачен" : "Закрыт"}
                       </Pill>
                     )}
                   </div>
-                <div className="mt-2 text-xs text-white/60">
-                  {state.avatar.status === "ready"
-                    ? "Аватар готов — выбирай стиль и запускай новые фотосессии."
-                      : state.order?.status === "paid"
-                        ? "Оплата прошла. Загрузите фото, чтобы мы подготовили аватар."
-                        : "Создайте аватар один раз — и затем делайте фотосессии в разных стилях."}
+                  <div className="mt-2 text-xs text-white/60">
+                    {state.avatar.status === "ready"
+                      ? "Аватар готов — выбирай стиль и запускай новые фотосессии."
+                      : isAvatarActive
+                        ? "Доступ открыт. Загрузите фото, чтобы мы подготовили ваш аватар."
+                        : "Разблокируйте создание аватара, чтобы обучить нейросеть вашей внешности."}
+                  </div>
                 </div>
               </div>
-            </div>
-                  <div className="mt-4 flex gap-2">
-                {state.order?.status === "paid" ? (
-                  <>
-                    <Button className="flex-1" onClick={() => go(resumeView)}>
+              <div className="mt-4 flex gap-2">
+                {state.avatar.status !== "ready" ? (
+                  <Button 
+                    className="flex-1" 
+                    onClick={createAvatarFlow}
+                    disabled={busy === "unlock"}
+                  >
+                    {busy === "unlock" ? (
+                      <Loader2 className="animate-spin" size={16} />
+                    ) : (
                       <UploadCloud size={16} />
-                      {resumeLabel}
-                    </Button>
-                  </>
-                ) : state.avatar.status !== "ready" ? (
-                  <Button className="flex-1" onClick={startNewPhotosession}>
-                    <UploadCloud size={16} />
-                    Создать аватар
+                    )}
+                    {isAvatarActive ? "Загрузить фото" : `Создать аватар (${cfg.costs.avatarTokens} т.)`}
                   </Button>
                 ) : (
                   <>
@@ -747,49 +782,61 @@ export function ClientMiniApp() {
                       }}
                     >
                       <Trash2 size={16} />
-                      Удалить и сбросить
+                      Удалить
                     </Button>
                   </>
                 )}
               </div>
             </Card>
 
-            {state.avatar.status !== "ready" ? (
-              <Card className="p-4">
-                <SectionHeader title="Тарифы" right={<span>Выберите перед оплатой</span>} />
-                <div className="mt-3 grid gap-2">
-                  {plans.map((p) => (
-                    <button
-                      key={p.id}
-                      className={cn(
-                        "relative overflow-hidden text-left rounded-2xl border border-stroke bg-white/4 p-4 transition hover:bg-white/6",
-                        state.plan === p.id && (p.featured ? "shadow-pro ring-1 ring-neonViolet/30 bg-white/6" : "shadow-neon ring-1 ring-neonBlue/30 bg-white/6"),
-                      )}
-                      onClick={() => dispatch({ type: "select_plan", plan: p.id as PlanId })}
-                      aria-pressed={state.plan === p.id}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <div className="truncate text-sm font-semibold text-white/95">{p.title}</div>
-                            {p.badge ? (
-                              <Badge className={cn("shrink-0", p.featured ? "border-neonViolet/30 bg-neonViolet/12 text-white" : "border-neonBlue/30 bg-neonBlue/12 text-white")}>
-                                {p.featured && <Crown size={14} />}
-                                {p.badge}
-                              </Badge>
-                            ) : null}
-                          </div>
-                          <div className="mt-1 text-xs text-white/65">{p.tokens} токенов</div>
+            <Card className="p-4">
+              <SectionHeader title="Пополнить баланс" right={<span>Выберите пакет токенов</span>} />
+              <div className="mt-3 grid gap-2">
+                {plans.map((p) => (
+                  <button
+                    key={p.id}
+                    className={cn(
+                      "relative overflow-hidden text-left rounded-2xl border border-stroke bg-white/4 p-4 transition hover:bg-white/6",
+                      state.plan === p.id && (p.featured ? "shadow-pro ring-1 ring-neonViolet/30 bg-white/6" : "shadow-neon ring-1 ring-neonBlue/30 bg-white/6"),
+                    )}
+                    onClick={() => {
+                      dispatch({ type: "select_plan", plan: p.id as PlanId });
+                      go("pay");
+                    }}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <div className="truncate text-sm font-semibold text-white/95">{p.title}</div>
+                          {p.badge ? (
+                            <Badge className={cn("shrink-0", p.featured ? "border-neonViolet/30 bg-neonViolet/12 text-white" : "border-neonBlue/30 bg-neonBlue/12 text-white")}>
+                              {p.featured && <Crown size={14} />}
+                              {p.badge}
+                            </Badge>
+                          ) : null}
                         </div>
-                        <div className="flex shrink-0 items-center gap-2 whitespace-nowrap">
-                          <div className="text-sm font-semibold text-white/90">{rub(p.priceRub)}</div>
-                        </div>
+                        <div className="mt-1 text-xs text-white/65">{p.tokens} токенов</div>
                       </div>
-                    </button>
-                  ))}
+                      <div className="flex shrink-0 items-center gap-2 whitespace-nowrap">
+                        <div className="text-sm font-semibold text-white/90">{rub(p.priceRub)}</div>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </Card>
+
+            {state.avatar.status === "ready" && (
+              <Card className="p-4">
+                <SectionHeader title="Управление" />
+                <div className="mt-3 grid gap-2">
+                  <Button className="w-full" onClick={startNewPhotosession}>
+                    <Sparkles size={16} />
+                    Выбрать новый стиль
+                  </Button>
                 </div>
               </Card>
-            ) : null}
+            )}
 
             <Card className="p-4">
               <SectionHeader title="Примеры" />
