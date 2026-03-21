@@ -17,6 +17,8 @@ import {
   Save,
   Clock,
   TrendingUp,
+  Copy,
+  Link,
 } from "lucide-react";
 import * as React from "react";
 import { Badge } from "../../components/ui/Badge";
@@ -202,15 +204,19 @@ export function ClientMiniApp() {
     if (!isAuthenticated) return;
     try {
       const profile = await getProfile();
-      dispatch({ 
-        type: "set_profile", 
-        tokensBalance: profile.user.tokensBalance,
-        avatarAccessExpiresAt: profile.user.avatarAccessExpiresAt || null,
-        astriaStatus: profile.user.astriaStatus || "none",
-        isPartner: !!profile.partner,
-        partnerPublicId: profile.partner?.publicId || null,
-        missedProfitRub: profile.missedProfit || 0,
-      });
+        dispatch({ 
+          type: "set_profile", 
+          tokensBalance: profile.user.tokensBalance,
+          avatarAccessExpiresAt: profile.user.avatarAccessExpiresAt || null,
+          astriaStatus: profile.user.astriaStatus || "none",
+          isPartner: !!profile.partner,
+          partnerPublicId: profile.partner?.publicId || null,
+          missedProfitRub: profile.missedProfit || 0,
+          refCode: profile.user.refCode || null,
+          refLink: profile.user.refLink || null,
+        });
+
+
 
     } catch (err) {
       console.error("[Client] Failed to fetch profile:", err);
@@ -437,9 +443,12 @@ export function ClientMiniApp() {
         isPartner: state.isPartner,
         partnerPublicId: state.partnerPublicId,
         missedProfitRub: state.missedProfitRub,
+        refCode: state.refCode,
+        refLink: state.refLink,
       });
 
       dispatch({ type: "generating_start" });
+
       go("generating");
     } catch (err) {
       toast.push({ title: "Ошибка", description: String(err), variant: "danger" });
@@ -629,6 +638,45 @@ export function ClientMiniApp() {
                   </p>
                 </Card>
               )}
+
+              {state.refCode && (
+                <Card className="relative overflow-hidden p-4 border-white/5 bg-white/5">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex-1">
+                      <div className="text-[10px] font-black text-white/40 uppercase tracking-wider mb-1">Ваша ссылка</div>
+                      <div className="flex items-center gap-2">
+                        <Link size={14} className="text-neonBlue" />
+                        <div className="text-xs font-medium text-white/80 truncate max-w-[180px]">
+                          {`t.me/${import.meta.env.VITE_BOT_NAME || 'bot'}/app?startapp=${state.refCode}`}
+                        </div>
+                      </div>
+                    </div>
+                    <Button 
+                      size="sm" 
+                      variant="ghost" 
+                      className="h-9 w-9 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 hover:text-white"
+
+                      onClick={() => {
+                        const botName = import.meta.env.VITE_BOT_NAME || 'bot';
+                        const url = `https://t.me/${botName}/app?startapp=${state.refCode}`;
+                        navigator.clipboard.writeText(url);
+                        // Using window.Telegram.WebApp.showPopup or just an alert for simplicity if toast is not available
+                        if ((window as any).Telegram?.WebApp?.showAlert) {
+                          (window as any).Telegram.WebApp.showAlert("Ссылка скопирована!");
+                        } else {
+                          alert("Ссылка скопирована!");
+                        }
+                      }}
+                    >
+                      <Copy size={16} />
+                    </Button>
+                  </div>
+                  <p className="mt-2 text-[9px] text-white/30 leading-tight">
+                    Делитесь ссылкой с друзьями. Если они купят пакет, а вы станете партнером — вы получите комиссию.
+                  </p>
+                </Card>
+              )}
+
 
 
               <Card className="relative overflow-hidden p-6 border-white/10 bg-white/5 shadow-2xl">

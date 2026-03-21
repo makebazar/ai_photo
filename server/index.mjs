@@ -1029,7 +1029,11 @@ async function main() {
           username: user.username,
           tokensBalance: user.tokens_balance,
           avatarAccessExpiresAt,
+          refCode: `client_u${user.tg_id}`,
+          refLink: makeTgLink(null, `client_u${user.tg_id}`, 'client'),
         },
+
+
         partner: partner ? {
           id: partner.id,
           publicId: partner.public_id,

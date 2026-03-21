@@ -106,7 +106,11 @@ export type ClientState = {
   astriaStatus: string;
   isPartner: boolean;
   partnerPublicId: number | null;
+  refCode: string | null;
+  refLink: string | null;
   missedProfitRub: number;
+
+
   generating: Generating;
 
   sessions: PhotoSession[];
@@ -135,7 +139,11 @@ export const initialClientState: ClientState = {
   astriaStatus: "none",
   isPartner: false,
   partnerPublicId: null,
+  refCode: null,
+  refLink: null,
   missedProfitRub: 0,
+
+
   generating: { status: "idle", progress: 0, etaSeconds: 0 },
 
   sessions: [],
@@ -144,7 +152,9 @@ export const initialClientState: ClientState = {
 
 export type ClientAction =
   | { type: "nav"; view: ClientView }
-  | { type: "set_profile"; tokensBalance: number; avatarAccessExpiresAt: string | null; astriaStatus: string; isPartner: boolean; partnerPublicId: number | null; missedProfitRub: number }
+  | { type: "set_profile"; tokensBalance: number; avatarAccessExpiresAt: string | null; astriaStatus: string; isPartner: boolean; partnerPublicId: number | null; missedProfitRub: number; refCode: string | null; refLink: string | null }
+
+
 
   | { type: "select_plan"; plan: PlanId }
   | { type: "select_model"; modelId: string }
@@ -191,7 +201,11 @@ export function clientReducer(state: ClientState, action: ClientAction): ClientS
         isPartner: action.isPartner,
         partnerPublicId: action.partnerPublicId,
         missedProfitRub: action.missedProfitRub,
+        refCode: action.refCode,
+        refLink: action.refLink,
       };
+
+
 
     case "select_plan":
       return {

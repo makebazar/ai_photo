@@ -159,8 +159,34 @@ export async function resolveReferralCode(db, code, opts = {}) {
     };
   }
 
+  // Try to find by user code (e.g. client_u123456 or just u123456)
+  const userMatch = /u(\d+)$/.exec(parsed.fullCode || code);
+  if (userMatch) {
+    const tgId = Number(userMatch[1]);
+    const { rows: uRows } = await db.query(
+      `select p.id as partner_id, u.id as user_id 
+       from users u 
+       left join partners p on p.user_id = u.id 
+       where u.tg_id = $1`,
+      [tgId]
+    );
+    
+    if (uRows[0]) {
+      // If the user IS a partner, return their partnerId
+      // If NOT, we return the user_id as "shadow" attribution
+      return {
+        partnerId: uRows[0].partner_id || null,
+        userId: uRows[0].user_id,
+        kind: parsed.kind || 'client',
+        code: parsed.fullCode || code,
+        linkId: null,
+      };
+    }
+  }
+
   return null;
 }
+
 
 /**
  * Track click on referral link

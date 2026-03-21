@@ -105,7 +105,11 @@ export type ClientProfile = {
     tokensBalance: number;
     avatarAccessExpiresAt?: string | null;
     astriaStatus?: string;
+    refCode?: string;
+    refLink?: string;
   };
+
+
   partner: any | null;
   missedProfit?: number;
   attribution: any | null;
