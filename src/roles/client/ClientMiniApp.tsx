@@ -220,6 +220,13 @@ export function ClientMiniApp() {
     return new Date(state.avatarAccessExpiresAt) > new Date();
   }, [state.avatarAccessExpiresAt]);
 
+  const activeModel = React.useMemo(() => {
+    const models = cfg.costs?.models || [];
+    return models.find(m => m.id === state.pendingModelId) || models.find(m => m.isDefault) || models[0];
+  }, [cfg.costs?.models, state.pendingModelId]);
+
+  const costPerPhoto = activeModel?.costPerPhoto || cfg.costs?.photoTokens || 1;
+
   const activeSession = React.useMemo(() => {
     if (!state.activeSessionId) return null;
     return state.sessions.find((s) => s.id === state.activeSessionId) ?? null;
@@ -440,10 +447,10 @@ export function ClientMiniApp() {
       return;
     }
     
-    if (state.tokensBalance < cfg.costs.photoTokens) {
+    if (state.tokensBalance < costPerPhoto) {
       toast.push({ 
         title: "Недостаточно токенов", 
-        description: `Стоимость генерации 1 фото — ${cfg.costs.photoTokens} токенов. Пополните баланс.`,
+        description: `Стоимость генерации 1 фото — ${costPerPhoto} токенов. Пополните баланс.`,
         variant: "danger" 
       });
       return;
@@ -456,6 +463,7 @@ export function ClientMiniApp() {
         headers: getAuthHeaders(),
         body: JSON.stringify({
           styleId: state.pendingStyleId,
+          modelId: state.pendingModelId,
           count: photosPerPlan(state.plan),
         }),
       });
@@ -1259,6 +1267,30 @@ export function ClientMiniApp() {
             </div>
 
             <Card className="p-4">
+              <SectionHeader title="Модель генерации" />
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                {(cfg.costs?.models || []).map((m) => {
+                  const active = (state.pendingModelId === m.id) || (!state.pendingModelId && m.isDefault);
+                  return (
+                    <button
+                      key={m.id}
+                      onClick={() => dispatch({ type: "select_model", modelId: m.id })}
+                      className={cn(
+                        "rounded-2xl border p-3 text-left transition",
+                        active
+                          ? "border-neonBlue/50 bg-neonBlue/10 shadow-neon"
+                          : "border-stroke bg-white/4 hover:bg-white/6",
+                      )}
+                    >
+                      <div className="text-sm font-semibold text-white/95">{m.title}</div>
+                      <div className="mt-1 text-[10px] text-white/60">{m.costPerPhoto} т. / фото</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </Card>
+
+            <Card className="p-4">
               <div className="flex items-center justify-between gap-3">
                 <div className="text-xs text-white/65">
                   Аватар:{" "}
@@ -1688,7 +1720,7 @@ export function ClientMiniApp() {
                     Другой стиль
                   </Button>
                   <Button className="flex-1 whitespace-nowrap" onClick={generateFlow}>
-                    Генерировать ({photosPerPlan(state.plan) * cfg.costs.photoTokens} т.)
+                    Генерировать ({photosPerPlan(state.plan) * costPerPhoto} т.)
                     <ArrowRight size={16} />
                   </Button>
                 </div>

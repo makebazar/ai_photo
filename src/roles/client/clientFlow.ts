@@ -100,6 +100,7 @@ export type ClientState = {
   pendingCustomCfgScale: number;
   pendingCustomSteps: number;
   pendingCustomFaceFix: boolean;
+  pendingModelId: string | null;
   tokensBalance: number;
   avatarAccessExpiresAt: string | null;
   astriaStatus: string;
@@ -124,6 +125,7 @@ export const initialClientState: ClientState = {
   pendingCustomCfgScale: 6.5,
   pendingCustomSteps: 28,
   pendingCustomFaceFix: true,
+  pendingModelId: null,
   tokensBalance: 0,
   avatarAccessExpiresAt: null,
   astriaStatus: "none",
@@ -136,6 +138,7 @@ export type ClientAction =
   | { type: "nav"; view: ClientView }
   | { type: "set_profile"; tokensBalance: number; avatarAccessExpiresAt: string | null; astriaStatus: string }
   | { type: "select_plan"; plan: PlanId }
+  | { type: "select_model"; modelId: string }
   | { type: "order_created"; order: Order }
   | { type: "order_paid"; paidAt: number }
   | { type: "cancel_photosession" }
@@ -183,6 +186,8 @@ export function clientReducer(state: ClientState, action: ClientAction): ClientS
         plan: action.plan,
         pendingCustomCount: photosPerPlan(action.plan),
       };
+    case "select_model":
+      return { ...state, pendingModelId: action.modelId };
     case "order_created":
       return { ...state, order: action.order };
     case "order_paid":

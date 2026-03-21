@@ -531,6 +531,51 @@ function ConfigSettings({ config, onSave }: { config: AdminConfig; onSave: (patc
     });
   };
 
+  const handleAddModel = () => {
+    const id = `model_${Date.now()}`;
+    const newModel = { id, title: "Новая модель", costPerPhoto: 1 };
+    setLocal({
+      ...local,
+      costs: {
+        ...local.costs,
+        models: [...(local.costs.models || []), newModel]
+      }
+    });
+  };
+
+  const handleDeleteModel = (id: string) => {
+    setLocal({
+      ...local,
+      costs: {
+        ...local.costs,
+        models: (local.costs.models || []).filter(m => m.id !== id)
+      }
+    });
+  };
+
+  const handleModelChange = (id: string, field: string, val: any) => {
+    setLocal({
+      ...local,
+      costs: {
+        ...local.costs,
+        models: (local.costs.models || []).map(m => {
+          if (m.id !== id) return m;
+          const next = { ...m, [field]: val };
+          if (field === "isDefault" && val === true) {
+            // Unset other defaults
+            return next;
+          }
+          return next;
+        }).map(m => {
+          if (field === "isDefault" && val === true && m.id !== id) {
+            return { ...m, isDefault: false };
+          }
+          return m;
+        })
+      }
+    });
+  };
+
   return (
     <div className="grid gap-6">
       <Card className="p-6">
@@ -680,6 +725,68 @@ function ConfigSettings({ config, onSave }: { config: AdminConfig; onSave: (patc
               className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonBlue/50"
             />
           </div>
+        </div>
+      </Card>
+
+      <Card className="p-6">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-white">Модели генерации</h2>
+          <Button variant="secondary" onClick={handleAddModel}>
+            + Добавить модель
+          </Button>
+        </div>
+        <div className="space-y-4">
+          {(local.costs?.models || []).map((m: any) => (
+            <div key={m.id} className="relative grid gap-4 rounded-xl border border-white/5 bg-white/2 p-4 md:grid-cols-4">
+              <button 
+                onClick={() => handleDeleteModel(m.id)}
+                className="absolute right-2 top-2 text-white/20 hover:text-red-400"
+              >
+                <Trash2 size={14} />
+              </button>
+              <div>
+                <label className="text-[10px] text-white/50">ID</label>
+                <input
+                  type="text"
+                  value={m.id}
+                  onChange={(e) => handleModelChange(m.id, "id", e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white outline-none focus:border-neonBlue/50"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-white/50">Название</label>
+                <input
+                  type="text"
+                  value={m.title}
+                  onChange={(e) => handleModelChange(m.id, "title", e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white outline-none focus:border-neonBlue/50"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-white/50">Токенов за фото</label>
+                <input
+                  type="number"
+                  value={m.costPerPhoto}
+                  onChange={(e) => handleModelChange(m.id, "costPerPhoto", parseInt(e.target.value) || 0)}
+                  className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white outline-none focus:border-neonBlue/50"
+                />
+              </div>
+              <div className="flex items-end pb-1.5">
+                <label className="flex cursor-pointer items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={!!m.isDefault}
+                    onChange={(e) => handleModelChange(m.id, "isDefault", e.target.checked)}
+                    className="h-3 w-3 rounded border-white/10 bg-white/5 text-neonBlue focus:ring-neonBlue/30"
+                  />
+                  <span className="text-[10px] text-white/70">По умолчанию</span>
+                </label>
+              </div>
+            </div>
+          ))}
+          {(local.costs?.models || []).length === 0 && (
+            <div className="py-4 text-center text-xs text-white/30 italic">Список моделей пуст</div>
+          )}
         </div>
       </Card>
 

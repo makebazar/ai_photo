@@ -10,11 +10,22 @@ export type AdminPlan = {
   grantsPartner: boolean;
 };
 
+export type GenerationModelConfig = {
+  id: string;
+  title: string;
+  costPerPhoto: number;
+  isDefault?: boolean;
+};
+
 export type AdminConfig = {
   plans: AdminPlan[];
   commissionsPct: { directClient: number; teamL1: number; teamL2: number };
   payout: { minWithdrawRub: number; slaText: string };
-  costs: { avatarTokens: number; photoTokens: number };
+  costs: { 
+    avatarTokens: number; 
+    photoTokens: number;
+    models?: GenerationModelConfig[];
+  };
   astriaCostsRub?: { standard: number; pro: number; monthlyApi: number };
 };
 

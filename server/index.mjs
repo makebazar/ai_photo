@@ -565,12 +565,17 @@ async function main() {
     const userId = req.userId;
     const b = req.body ?? {};
     const styleId = b.styleId ? String(b.styleId) : null;
+    const modelId = b.modelId ? String(b.modelId) : null;
     const count = Math.max(1, Math.min(50, Number(b.count || 1)));
     if (!styleId) throw httpError(400, "styleId required");
 
     const res = await withTx(pool, async (db) => {
       const cfg = await readConfig(db);
-      const costPerPhoto = cfg.costs?.photoTokens || 1;
+      
+      // Find model cost or fallback to default photoTokens
+      const models = cfg.costs?.models || [];
+      const model = models.find(m => m.id === modelId) || models.find(m => m.isDefault) || { costPerPhoto: cfg.costs?.photoTokens || 1 };
+      const costPerPhoto = model.costPerPhoto;
       const totalCost = costPerPhoto * count;
 
       // 1. Check tokens

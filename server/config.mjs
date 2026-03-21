@@ -25,7 +25,12 @@ const DEFAULT_CONFIG = {
   payout: { minWithdrawRub: 500, slaText: "Обычно 1–6 часов (анти‑фрод)" },
   costs: {
     avatarTokens: 50, // Cost to unlock avatar training/access
-    photoTokens: 1,   // Cost per 1 generated photo
+    photoTokens: 1,   // Legacy/Default cost per photo
+    models: [
+      { id: "sdxl", title: "SDXL", costPerPhoto: 1, isDefault: true },
+      { id: "flux", title: "Flux (Pro)", costPerPhoto: 3 },
+      { id: "ultra", title: "Ultra Realism", costPerPhoto: 5 },
+    ],
   },
 };
 

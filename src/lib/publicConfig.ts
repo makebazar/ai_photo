@@ -16,6 +16,13 @@ export type PublicPlan = {
   grantsPartner: boolean;
 };
 
+export type PublicGenerationModel = {
+  id: string;
+  title: string;
+  costPerPhoto: number;
+  isDefault?: boolean;
+};
+
 export type PublicConfig = {
   updatedAt: number;
   plans: PublicPlan[];
@@ -31,6 +38,7 @@ export type PublicConfig = {
   costs: {
     avatarTokens: number;
     photoTokens: number;
+    models?: PublicGenerationModel[];
   };
   packs: any[];
   promos: any[];
@@ -71,6 +79,10 @@ const DEFAULT_PUBLIC_CONFIG: PublicConfig = {
   costs: {
     avatarTokens: 50,
     photoTokens: 1,
+    models: [
+      { id: "sdxl", title: "SDXL", costPerPhoto: 1, isDefault: true },
+      { id: "flux", title: "Flux (Pro)", costPerPhoto: 3 },
+    ],
   },
   packs: [],
   promos: [],
