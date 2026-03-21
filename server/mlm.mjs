@@ -250,21 +250,24 @@ export async function allocateCommissionsForOrder(db, orderId) {
   let directPartnerId = order.attribution_partner_id;
   let directLinkId = null;
   let referrerUserId = null;
+  let directClickId = null;
   
   if (!directPartnerId) {
     // Check for link-based attribution
     const { rows: clickRows } = await db.query(
-      `select partner_id, link_id, user_id as referrer_user_id from referral_clicks 
+      `select id, partner_id, link_id, user_id as referrer_user_id from referral_clicks 
        where user_id = $1 and kind = 'client' 
        order by clicked_at desc limit 1`,
       [order.user_id]
     );
     if (clickRows[0]) {
+      directClickId = clickRows[0].id;
       directPartnerId = clickRows[0].partner_id;
       directLinkId = clickRows[0].link_id;
       referrerUserId = clickRows[0].referrer_user_id;
     }
   }
+
   
   const isUuid = (str) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
   const ownerId = isUuid(cfg.mlm?.ownerPartnerId) ? cfg.mlm.ownerPartnerId : null;
@@ -397,14 +400,14 @@ export async function allocateCommissionsForOrder(db, orderId) {
 
 
   // Track conversion on referral link
-  if (directLinkId) {
+  if (directLinkId || directClickId) {
     await markReferralConversion(db, {
+      clickId: directClickId,
       linkId: directLinkId,
       orderId,
       amountRub: order.amount_rub,
       earningsRub: partnerDirectEarnings,
     });
-
   }
 
   return { ok: true, commissions: created };
