@@ -37,7 +37,6 @@ export type PublicConfig = {
   };
   costs: {
     avatarTokens: number;
-    photoTokens: number;
     models?: PublicGenerationModel[];
   };
   packs: any[];
@@ -78,7 +77,6 @@ const DEFAULT_PUBLIC_CONFIG: PublicConfig = {
   },
   costs: {
     avatarTokens: 50,
-    photoTokens: 1,
     models: [
       { id: "sdxl", title: "SDXL", costPerPhoto: 1, isDefault: true },
       { id: "flux", title: "Flux (Pro)", costPerPhoto: 3 },

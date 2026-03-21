@@ -23,7 +23,6 @@ export type AdminConfig = {
   payout: { minWithdrawRub: number; slaText: string };
   costs: { 
     avatarTokens: number; 
-    photoTokens: number;
     models?: GenerationModelConfig[];
   };
   astriaCostsRub?: { standard: number; pro: number; monthlyApi: number };

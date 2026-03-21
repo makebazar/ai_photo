@@ -802,15 +802,6 @@ function ConfigSettings({ config, onSave }: { config: AdminConfig; onSave: (patc
               className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonBlue/50"
             />
           </div>
-          <div>
-            <label className="text-xs text-white/50">Генерация 1 фото</label>
-            <input
-              type="number"
-              value={local.costs?.photoTokens || 0}
-              onChange={(e) => handleCostChange("photoTokens", e.target.value)}
-              className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonBlue/50"
-            />
-          </div>
         </div>
       </Card>
 

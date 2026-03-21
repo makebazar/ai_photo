@@ -572,9 +572,9 @@ async function main() {
     const res = await withTx(pool, async (db) => {
       const cfg = await readConfig(db);
       
-      // Find model cost or fallback to default photoTokens
+      // Find model cost or fallback to 1
       const models = cfg.costs?.models || [];
-      const model = models.find(m => m.id === modelId) || models.find(m => m.isDefault) || { costPerPhoto: cfg.costs?.photoTokens || 1 };
+      const model = models.find(m => m.id === modelId) || models.find(m => m.isDefault) || { costPerPhoto: 1 };
       const costPerPhoto = model.costPerPhoto;
       const totalCost = costPerPhoto * count;
 

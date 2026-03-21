@@ -43,7 +43,6 @@ function createEmptyState(): AdminState {
       payout: { minWithdrawRub: 5000, slaText: "1-3 рабочих дня" },
       costs: { 
         avatarTokens: 50, 
-        photoTokens: 1,
         models: [
           { id: "sdxl", title: "SDXL", costPerPhoto: 1, isDefault: true },
           { id: "flux", title: "Flux (Pro)", costPerPhoto: 3 },

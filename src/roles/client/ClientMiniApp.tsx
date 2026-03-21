@@ -225,7 +225,7 @@ export function ClientMiniApp() {
     return models.find(m => m.id === state.pendingModelId) || models.find(m => m.isDefault) || models[0];
   }, [cfg.costs?.models, state.pendingModelId]);
 
-  const costPerPhoto = activeModel?.costPerPhoto || cfg.costs?.photoTokens || 1;
+  const costPerPhoto = activeModel?.costPerPhoto || 1;
 
   const activeSession = React.useMemo(() => {
     if (!state.activeSessionId) return null;
