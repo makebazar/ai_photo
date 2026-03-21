@@ -16,6 +16,7 @@ import {
   UserX,
   Save,
   Clock,
+  TrendingUp,
 } from "lucide-react";
 import * as React from "react";
 import { Badge } from "../../components/ui/Badge";
@@ -208,7 +209,9 @@ export function ClientMiniApp() {
         astriaStatus: profile.user.astriaStatus || "none",
         isPartner: !!profile.partner,
         partnerPublicId: profile.partner?.publicId || null,
+        missedProfitRub: profile.missedProfit || 0,
       });
+
     } catch (err) {
       console.error("[Client] Failed to fetch profile:", err);
     }
@@ -432,8 +435,10 @@ export function ClientMiniApp() {
         avatarAccessExpiresAt: state.avatarAccessExpiresAt, 
         astriaStatus: state.astriaStatus,
         isPartner: state.isPartner,
-        partnerPublicId: state.partnerPublicId
+        partnerPublicId: state.partnerPublicId,
+        missedProfitRub: state.missedProfitRub,
       });
+
       dispatch({ type: "generating_start" });
       go("generating");
     } catch (err) {
@@ -595,6 +600,36 @@ export function ClientMiniApp() {
                   Создавайте профессиональные портреты в одно касание.
                 </p>
               </div>
+
+              {state.missedProfitRub > 0 && !state.isPartner && (
+                <Card className="relative overflow-hidden p-4 border-orange-500/30 bg-orange-500/10 shadow-lg shadow-orange-500/5">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-500/20 text-orange-500">
+                      <TrendingUp size={20} />
+                    </div>
+                    <div className="flex-1">
+                      <div className="text-xs font-black text-orange-500 uppercase tracking-tight">Упущенная прибыль</div>
+                      <div className="text-lg font-black text-white">{rub(state.missedProfitRub)}</div>
+                    </div>
+                    <Button 
+                      size="sm" 
+                      className="bg-orange-500 hover:bg-orange-600 text-white font-bold h-8 px-3 text-[10px] uppercase tracking-wider"
+                      onClick={() => {
+                        const botName = import.meta.env.VITE_PARTNER_BOT_NAME || "ai_photo_testast_partner_bot";
+                        const appName = import.meta.env.VITE_TELEGRAM_APP_NAME;
+                        const url = appName ? `https://t.me/${botName}/${appName}` : `https://t.me/${botName}`;
+                        (window as any).Telegram?.WebApp?.openTelegramLink(url);
+                      }}
+                    >
+                      Забрать
+                    </Button>
+                  </div>
+                  <p className="mt-2 text-[10px] text-white/50 leading-tight">
+                    Вы пригласили клиентов, но не купили пакет «Партнер». Ваши комиссионные уходят вышестоящему партнеру.
+                  </p>
+                </Card>
+              )}
+
 
               <Card className="relative overflow-hidden p-6 border-white/10 bg-white/5 shadow-2xl">
                 <div className="pointer-events-none absolute -right-12 -top-12 h-40 w-40 rounded-full bg-neonBlue/10 blur-3xl" />

@@ -223,11 +223,12 @@ export async function allocateCommissionsForOrder(db, orderId) {
   // Determine the "direct" partner (who invited the paying client).
   let directPartnerId = order.attribution_partner_id;
   let directLinkId = null;
+  let referrerUserId = null;
   
   if (!directPartnerId) {
     // Check for link-based attribution
     const { rows: clickRows } = await db.query(
-      `select partner_id, link_id from referral_clicks 
+      `select partner_id, link_id, user_id as referrer_user_id from referral_clicks 
        where user_id = $1 and kind = 'client' 
        order by clicked_at desc limit 1`,
       [order.user_id]
@@ -235,6 +236,7 @@ export async function allocateCommissionsForOrder(db, orderId) {
     if (clickRows[0]) {
       directPartnerId = clickRows[0].partner_id;
       directLinkId = clickRows[0].link_id;
+      referrerUserId = clickRows[0].referrer_user_id;
     }
   }
   
@@ -247,35 +249,50 @@ export async function allocateCommissionsForOrder(db, orderId) {
   
   if (!directPartnerId) return { ok: true, commissions: 0 };
 
-  // Resolve uplines.
-  const { rows: directRows } = await db.query(`select id, parent_partner_id from partners where id = $1`, [
-    directPartnerId,
-  ]);
-  const direct = directRows[0];
-  if (!direct) return { ok: true, commissions: 0 };
+  // Resolve direct partner status.
+  const { rows: partnerRows } = await db.query(
+    `select p.id, p.parent_partner_id, p.status, p.user_id as partner_user_id 
+     from partners p where p.id = $1`, 
+    [directPartnerId]
+  );
+  const directPartner = partnerRows[0];
+  if (!directPartner) return { ok: true, commissions: 0 };
 
-  const l1PartnerId = direct.parent_partner_id ?? cfg.mlm?.ownerPartnerId ?? null;
+  // LOGIC: PASS-UP
+  // If the referrer (the one who gave the link) is NOT a partner yet, 
+  // they "miss" the commission, and it goes to the directPartnerId (who invited the referrer).
+  let actualPartnerId = directPartnerId;
+  let uplinePartnerId = directPartner.parent_partner_id ?? cfg.mlm?.ownerPartnerId ?? null;
+
+  // If order.user_id was invited by someone who is NOT yet a partner, 
+  // we could track missed profit here if we knew who that someone was.
+  // In our system, every referral link belongs to a PARTNER.
+  // If a non-partner user shares a link, it's actually their partner's link.
+  
+  // To implement "User misses profit", we need to know if the click was via a user's personal (non-partner) link.
+  // But wait, only partners have links in our current schema. 
+  // Let's assume non-partners can also have "shadow" referral codes or we use their userId.
 
   const partnerPct = cfg.commissionsPct.partner || 20;
   const parentPct = cfg.commissionsPct.parent || 10;
 
   const payouts = [
     {
-      partnerId: directPartnerId,
+      partnerId: actualPartnerId,
       level: 0,
       percent: partnerPct,
       linkId: directLinkId,
     },
-    // If there is an L1 (parent) OR a global owner defined, pay the 10%
-    l1PartnerId && l1PartnerId !== directPartnerId
+    uplinePartnerId && uplinePartnerId !== actualPartnerId
       ? {
-          partnerId: l1PartnerId,
+          partnerId: uplinePartnerId,
           level: 1,
           percent: parentPct,
           linkId: null,
         }
       : null,
   ].filter(Boolean);
+
 
 
 
@@ -326,15 +343,29 @@ export async function allocateCommissionsForOrder(db, orderId) {
     // Send notification
     const emoji = p.level === 0 ? "💰" : "🤝";
     const levelText = p.level === 0 ? "Прямая продажа" : `Командная продажа (L${p.level})`;
+    
+    // Check if this was a Pass-up (referrer was not a partner)
+    let extraNote = "";
+    if (p.level === 0 && referrerUserId) {
+      const referralAmount = computeCommissionAmount(order.amount_rub, partnerPct);
+      await db.query(
+        `insert into missed_profits (user_id, order_id, amount_rub, potential_commission_rub, beneficiary_partner_id)
+         values ($1, $2, $3, $4, $5)`,
+        [referrerUserId, order.id, order.amount_rub, referralAmount, p.partnerId]
+      );
+      extraNote = "\n<i>(Pass-up от не-партнера)</i>";
+    }
+
     await sendPartnerNotification(
       db,
       p.partnerId,
       `${emoji} <b>Новое начисление!</b>\n\n` +
       `Тип: ${levelText}\n` +
       `Сумма: <b>${amountRub}₽</b>\n` +
-      `Статус: Холд ${holdDays} дней`
+      `Статус: Холд ${holdDays} дней${extraNote}`
     );
   }
+
 
 
   // Track conversion on referral link

@@ -107,9 +107,11 @@ export type ClientProfile = {
     astriaStatus?: string;
   };
   partner: any | null;
+  missedProfit?: number;
   attribution: any | null;
   role: string;
 };
+
 
 export async function getProfile(): Promise<ClientProfile> {
   const res = await fetch(`${API_BASE}/api/auth/login`, {

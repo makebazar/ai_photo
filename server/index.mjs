@@ -1037,12 +1037,20 @@ async function main() {
           teamCode: partner.team_code,
           status: partner.status,
         } : null,
+        missedProfit: await withTx(pool, async (db) => {
+          const { rows } = await db.query(
+            `select coalesce(sum(potential_commission_rub), 0)::int as n from missed_profits where user_id = $1`,
+            [user.id]
+          );
+          return rows[0]?.n || 0;
+        }),
         attribution: attribution ? {
           partnerId: attribution.id,
           code: attribution.client_code,
         } : null,
         role,
       };
+
     });
 
     return { ok: true, ...result };
