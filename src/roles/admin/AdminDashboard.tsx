@@ -696,7 +696,13 @@ function ConfigSettings({ config, onSave }: { config: AdminConfig; onSave: (patc
       </Card>
 
       <Card className="p-6">
-        <h2 className="mb-4 text-lg font-bold text-white">Партнерская программа (%)</h2>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-white">Партнерская программа (%)</h2>
+          <Button onClick={() => onSave(local)}>
+            <Save size={16} className="mr-2" />
+            Сохранить %
+          </Button>
+        </div>
         <div className="grid gap-4 md:grid-cols-3">
           <div>
             <label className="text-xs text-white/50">Прямой клиент (L0)</label>
@@ -731,9 +737,15 @@ function ConfigSettings({ config, onSave }: { config: AdminConfig; onSave: (patc
       <Card className="p-6">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-bold text-white">Модели генерации</h2>
-          <Button variant="secondary" onClick={handleAddModel}>
-            + Добавить модель
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={handleAddModel}>
+              + Добавить модель
+            </Button>
+            <Button onClick={() => onSave(local)}>
+              <Save size={16} className="mr-2" />
+              Сохранить модели
+            </Button>
+          </div>
         </div>
         <div className="space-y-4">
           {(local.costs?.models || []).map((m: any) => (
@@ -791,7 +803,13 @@ function ConfigSettings({ config, onSave }: { config: AdminConfig; onSave: (patc
       </Card>
 
       <Card className="p-6">
-        <h2 className="mb-4 text-lg font-bold text-white">Стоимость в токенах</h2>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-white">Стоимость в токенах</h2>
+          <Button onClick={() => onSave(local)}>
+            <Save size={16} className="mr-2" />
+            Сохранить стоимость
+          </Button>
+        </div>
         <div className="grid gap-4 md:grid-cols-2">
           <div>
             <label className="text-xs text-white/50">Разблокировка аватара (до удаления)</label>
@@ -806,7 +824,13 @@ function ConfigSettings({ config, onSave }: { config: AdminConfig; onSave: (patc
       </Card>
 
       <Card className="p-6">
-        <h2 className="mb-4 text-lg font-bold text-white">Выплаты</h2>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-white">Выплаты</h2>
+          <Button onClick={() => onSave(local)}>
+            <Save size={16} className="mr-2" />
+            Сохранить выплаты
+          </Button>
+        </div>
         <div className="grid gap-4 md:grid-cols-2">
           <div>
             <label className="text-xs text-white/50">Минимум для вывода (₽)</label>
