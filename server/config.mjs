@@ -35,6 +35,17 @@ const DEFAULT_CONFIG = {
       { id: "ultra", title: "Ultra Realism", costPerPhoto: 5 },
     ],
   },
+  astria: {
+    tuneBaseId: 1504944,
+    modelType: "lora",
+    trainPreset: "",
+    className: "person",
+    tokenPrefix: "ohwx",
+    tuneCallbackUrl: "",
+    promptCallbackUrl: "",
+    promptTimeoutMs: 480000,
+    promptPollMs: 5000,
+  },
 };
 
 export function getDefaultConfig() {
@@ -58,6 +69,7 @@ export async function readConfig(db) {
     plans: Array.isArray(cfg.plans) ? cfg.plans : DEFAULT_CONFIG.plans,
     commissionsPct: { ...DEFAULT_CONFIG.commissionsPct, ...(cfg.commissionsPct ?? {}) },
     payout: { ...DEFAULT_CONFIG.payout, ...(cfg.payout ?? {}) },
+    costs: { ...DEFAULT_CONFIG.costs, ...(cfg.costs ?? {}) },
+    astria: { ...DEFAULT_CONFIG.astria, ...(cfg.astria ?? {}) },
   };
 }
-

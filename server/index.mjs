@@ -9,6 +9,7 @@ import { ensureSeedData } from "./seed.mjs";
 import { allocateCommissionsForOrder, reverseCommissionsForOrder, makeReferralCodes, parseReferralCode, resolveReferralCode, trackReferralClick } from "./mlm.mjs";
 import { getTelegramUser, requireTelegramAuth } from "./auth.mjs";
 import { httpError } from "./http.mjs";
+import { getTuneStatus, isAstriaEnabled } from "./astria.mjs";
 
 const pool = makePool();
 
@@ -18,10 +19,16 @@ const pool = makePool();
  */
 async function checkAstriaModelStatus(modelId) {
   if (!modelId) return "none";
-  console.log(`[Astria AI] Checking status for model: ${modelId}`);
-  // Logic stub: assume model exists if we have its ID
-  // In real implementation: if 404 from Astria -> return "deleted"
-  return "active";
+  if (!isAstriaEnabled()) return "active";
+  try {
+    const { status } = await getTuneStatus(modelId);
+    if (status === "deleted") return "deleted";
+    if (status === "failed") return "failed";
+    return "active";
+  } catch (err) {
+    console.error("[Astria] status check failed:", err);
+    return "active";
+  }
 }
 
 async function upsertUser(db, { tgId, username }) {
@@ -499,6 +506,7 @@ async function main() {
         commissionsPct: { ...current.commissionsPct, ...(patch.commissionsPct ?? {}) },
         payout: { ...current.payout, ...(patch.payout ?? {}) },
         costs: { ...current.costs, ...(patch.costs ?? {}) },
+        astria: { ...(current.astria ?? {}), ...(patch.astria ?? {}) },
       };
       await db.query(`update app_config set config = $1::jsonb, updated_at = now() where id = 1`, [
         JSON.stringify(merged),
@@ -611,6 +619,8 @@ async function main() {
     const res = await withTx(pool, async (db) => {
       const user = await upsertUser(db, { tgId });
       if (!user) throw httpError(404, "User not found");
+      const { rows: avatarRows } = await db.query(`select status from avatars where user_id = $1`, [user.id]);
+      if (!avatarRows[0] || avatarRows[0].status !== "ready") throw httpError(400, "Avatar is not ready");
 
       const cfg = await readConfig(db);
       
@@ -646,11 +656,24 @@ async function main() {
         }
       }
 
+      const sessionSettings = {
+        count,
+        modelId,
+        aspectRatio,
+        cfgScale: b.cfgScale != null ? Number(b.cfgScale) : null,
+        steps: b.steps != null ? Number(b.steps) : null,
+        enhance: b.enhance != null ? Boolean(b.enhance) : true,
+        faceFix: b.faceFix != null ? Boolean(b.faceFix) : true,
+      };
       const { rows: sRows } = await db.query(
         `insert into photo_sessions (user_id, mode, pack_id, title, prompt, negative, settings, status)
          values ($1, $2, $3, $4, $5, $6, $7::jsonb, 'queued')
          returning id`,
-        [user.id, mode, packId, title, prompt, negative, JSON.stringify({ count, modelId, aspectRatio })]
+        [user.id, mode, packId, title, prompt, negative, JSON.stringify(sessionSettings)]
+      );
+      await db.query(
+        `insert into jobs (kind, status, progress, payload) values ('session.generate','queued',0,$1::jsonb)`,
+        [JSON.stringify({ sessionId: sRows[0].id, count })],
       );
 
       return { sessionId: sRows[0].id, spent: totalCost };
@@ -1092,9 +1115,10 @@ async function main() {
       );
       const avatar = avatarRows.rows[0];
       let avatarAccessExpiresAt = user.avatar_access_expires_at;
+      let astriaStatus = "none";
 
       if (avatar?.astria_model_id) {
-        const astriaStatus = await checkAstriaModelStatus(avatar.astria_model_id);
+        astriaStatus = await checkAstriaModelStatus(avatar.astria_model_id);
         if (astriaStatus === "deleted") {
           console.log(`[Auth] Avatar model ${avatar.astria_model_id} deleted in Astria. Resetting access.`);
           avatarAccessExpiresAt = null;
@@ -1112,6 +1136,7 @@ async function main() {
           username: user.username,
           tokensBalance: user.tokens_balance,
           avatarAccessExpiresAt,
+          astriaStatus,
           refCode: user.personal_ref_code,
           refLink: makeTgLink(null, user.personal_ref_code, 'client'),
         },
@@ -1186,7 +1211,9 @@ async function main() {
     const username = auth.user.username ? `@${String(auth.user.username).replace(/^@/, "")}` : body.username ? String(body.username) : null;
     const clientCode = body.clientCode ? String(body.clientCode) : null;
     const photoUrls = Array.isArray(body.photoUrls) ? body.photoUrls.map((x) => String(x)).filter(Boolean) : [];
-    if (photoUrls.length < 4) throw httpError(400, "Need at least 4 photos");
+    const photoDataUrls = Array.isArray(body.photoDataUrls) ? body.photoDataUrls.map((x) => String(x)).filter(Boolean) : [];
+    const photos = [...photoUrls, ...photoDataUrls].slice(0, 40);
+    if (photos.length < 4) throw httpError(400, "Need at least 4 photos");
 
     const res = await withTx(pool, async (db) => {
       const user = await upsertUser(db, { tgId, username });
@@ -1194,10 +1221,10 @@ async function main() {
 
       const { rows: dsRows } = await db.query(
         `insert into datasets (user_id, status, uploaded_count) values ($1, 'ready', $2) returning id`,
-        [user.id, photoUrls.length],
+        [user.id, photos.length],
       );
       const datasetId = dsRows[0].id;
-      for (const url of photoUrls.slice(0, 40)) {
+      for (const url of photos) {
         await db.query(`insert into dataset_images (dataset_id, url) values ($1, $2)`, [datasetId, url]);
       }
 
@@ -1228,7 +1255,31 @@ async function main() {
       if (!userId) return { status: "none" };
       const { rows: aRows } = await db.query(`select status, astria_model_id, last_trained_at from avatars where user_id = $1`, [userId]);
       const a = aRows?.[0];
-      return a ? { status: a.status, astriaModelId: a.astria_model_id, lastTrainedAt: a.last_trained_at } : { status: "none" };
+      if (!a) return { status: "none" };
+
+      if (a.astria_model_id && isAstriaEnabled()) {
+        const astria = await getTuneStatus(a.astria_model_id);
+        if (astria.status === "ready" && a.status !== "ready") {
+          await db.query(
+            `update avatars set status = 'ready', last_trained_at = now(), updated_at = now() where user_id = $1`,
+            [userId],
+          );
+          return { status: "ready", astriaModelId: a.astria_model_id, lastTrainedAt: new Date().toISOString() };
+        }
+        if (astria.status === "failed" && a.status !== "failed") {
+          await db.query(`update avatars set status = 'failed', updated_at = now() where user_id = $1`, [userId]);
+          return { status: "failed", astriaModelId: a.astria_model_id, lastTrainedAt: a.last_trained_at };
+        }
+        if (astria.status === "deleted" && a.status !== "none") {
+          await db.query(
+            `update avatars set status = 'none', astria_model_id = null, updated_at = now() where user_id = $1`,
+            [userId],
+          );
+          await db.query(`update users set avatar_access_expires_at = null where id = $1`, [userId]);
+          return { status: "none" };
+        }
+      }
+      return { status: a.status, astriaModelId: a.astria_model_id, lastTrainedAt: a.last_trained_at };
     });
     return { ok: true, avatar: out };
   });

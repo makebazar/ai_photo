@@ -655,11 +655,28 @@ function UsersList({ users, onDelete, onAdjustTokens }: { users: any[]; onDelete
 }
 
 function ConfigSettings({ config, onSave }: { config: AdminConfig; onSave: (patch: Partial<AdminConfig>) => void }) {
+  const defaultAstria = React.useMemo(
+    () => ({
+      tuneBaseId: 1504944,
+      modelType: "lora",
+      trainPreset: "",
+      className: "person",
+      tokenPrefix: "ohwx",
+      tuneCallbackUrl: "",
+      promptCallbackUrl: "",
+      promptTimeoutMs: 480000,
+      promptPollMs: 5000,
+    }),
+    [],
+  );
   const [local, setLocal] = React.useState<AdminConfig>(config);
 
   React.useEffect(() => {
-    setLocal(config);
-  }, [config]);
+    setLocal({
+      ...config,
+      astria: { ...defaultAstria, ...(config.astria ?? {}) },
+    });
+  }, [config, defaultAstria]);
 
   const handleAddPlan = () => {
     const id = `plan_${Date.now()}`;
@@ -707,6 +724,17 @@ function ConfigSettings({ config, onSave }: { config: AdminConfig; onSave: (patc
     setLocal({
       ...local,
       costs: { ...local.costs, [field as any]: num }
+    });
+  };
+
+  const handleAstriaChange = (field: string, val: any) => {
+    setLocal({
+      ...local,
+      astria: {
+        ...defaultAstria,
+        ...(local.astria ?? {}),
+        [field]: val,
+      },
     });
   };
 
@@ -996,6 +1024,99 @@ function ConfigSettings({ config, onSave }: { config: AdminConfig; onSave: (patc
               type="text"
               value={local.payout.slaText}
               onChange={(e) => handlePayoutChange("slaText", e.target.value)}
+              className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonBlue/50"
+            />
+          </div>
+        </div>
+      </Card>
+
+      <Card className="p-6">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-white">Astria</h2>
+          <Button onClick={() => onSave(local)}>
+            <Save size={16} className="mr-2" />
+            Сохранить Astria
+          </Button>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div>
+            <label className="text-xs text-white/50">Base tune ID</label>
+            <input
+              type="number"
+              value={local.astria?.tuneBaseId ?? defaultAstria.tuneBaseId}
+              onChange={(e) => handleAstriaChange("tuneBaseId", parseInt(e.target.value) || 0)}
+              className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonBlue/50"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-white/50">Model type</label>
+            <input
+              type="text"
+              value={local.astria?.modelType ?? defaultAstria.modelType}
+              onChange={(e) => handleAstriaChange("modelType", e.target.value)}
+              className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonBlue/50"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-white/50">Train preset</label>
+            <input
+              type="text"
+              value={local.astria?.trainPreset ?? defaultAstria.trainPreset}
+              onChange={(e) => handleAstriaChange("trainPreset", e.target.value)}
+              className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonBlue/50"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-white/50">Class name</label>
+            <input
+              type="text"
+              value={local.astria?.className ?? defaultAstria.className}
+              onChange={(e) => handleAstriaChange("className", e.target.value)}
+              className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonBlue/50"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-white/50">Token prefix</label>
+            <input
+              type="text"
+              value={local.astria?.tokenPrefix ?? defaultAstria.tokenPrefix}
+              onChange={(e) => handleAstriaChange("tokenPrefix", e.target.value)}
+              className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonBlue/50"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-white/50">Tune callback URL</label>
+            <input
+              type="text"
+              value={local.astria?.tuneCallbackUrl ?? defaultAstria.tuneCallbackUrl}
+              onChange={(e) => handleAstriaChange("tuneCallbackUrl", e.target.value)}
+              className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonBlue/50"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-white/50">Prompt callback URL</label>
+            <input
+              type="text"
+              value={local.astria?.promptCallbackUrl ?? defaultAstria.promptCallbackUrl}
+              onChange={(e) => handleAstriaChange("promptCallbackUrl", e.target.value)}
+              className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonBlue/50"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-white/50">Prompt timeout (ms)</label>
+            <input
+              type="number"
+              value={local.astria?.promptTimeoutMs ?? defaultAstria.promptTimeoutMs}
+              onChange={(e) => handleAstriaChange("promptTimeoutMs", parseInt(e.target.value) || 0)}
+              className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonBlue/50"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-white/50">Prompt poll (ms)</label>
+            <input
+              type="number"
+              value={local.astria?.promptPollMs ?? defaultAstria.promptPollMs}
+              onChange={(e) => handleAstriaChange("promptPollMs", parseInt(e.target.value) || 0)}
               className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-neonBlue/50"
             />
           </div>

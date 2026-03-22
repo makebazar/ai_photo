@@ -29,6 +29,17 @@ export type AdminConfig = {
     avatarTokens: number; 
     models?: GenerationModelConfig[];
   };
+  astria?: {
+    tuneBaseId: number;
+    modelType: string;
+    trainPreset?: string;
+    className: string;
+    tokenPrefix: string;
+    tuneCallbackUrl?: string;
+    promptCallbackUrl?: string;
+    promptTimeoutMs: number;
+    promptPollMs: number;
+  };
   astriaCostsRub?: { standard: number; pro: number; monthlyApi: number };
 };
 

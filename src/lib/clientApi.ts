@@ -37,22 +37,22 @@ export type Order = {
 
 export type PhotoSession = {
   id: string;
-  user_id: string;
-  order_id?: string;
   mode: "pack" | "custom";
-  pack_id?: number;
+  packId?: number;
   title?: string;
   status: "queued" | "generating" | "done" | "failed" | "canceled";
-  created_at: string;
-  updated_at: string;
+  prompt?: string;
+  settings?: Record<string, any>;
+  createdAt: string;
+  photos: GeneratedPhoto[];
 };
 
 export type GeneratedPhoto = {
   id: string;
-  session_id: string;
+  sessionId?: string;
   url: string;
   label?: string;
-  created_at: string;
+  createdAt: string;
 };
 
 export type StylePack = {
@@ -130,14 +130,15 @@ export async function getProfile(): Promise<ClientProfile> {
 
 // ============ Avatar / Training ============
 
-export async function startAvatarTraining(photoUrls: string[], clientCode?: string): Promise<{
+export async function startAvatarTraining(photoDataUrls: string[], clientCode?: string): Promise<{
   userId: string;
   jobId: string;
+  astriaModelId?: string;
 }> {
   const res = await fetch(`${API_BASE}/api/client/avatar/start`, {
     method: "POST",
     headers: getAuthHeaders(),
-    body: JSON.stringify({ photoUrls, clientCode }),
+    body: JSON.stringify({ photoDataUrls, clientCode }),
   });
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
@@ -171,35 +172,30 @@ export async function listPacks(): Promise<StylePack[]> {
 // ============ Photosessions ============
 
 export async function createPhotosession(params: {
-  plan: PlanId;
-  styleId: string;
+  styleId: string | null;
+  modelId?: string | null;
+  planId?: PlanId;
   prompt?: string;
   negative?: string;
   count?: number;
   aspectRatio?: string;
+  cfgScale?: number;
+  steps?: number;
+  faceFix?: boolean;
   enhance?: boolean;
-}): Promise<PhotoSession> {
-  const res = await fetch(`${API_BASE}/api/client/photosession`, {
+}): Promise<{ sessionId: string; spent: number }> {
+  const res = await fetch(`${API_BASE}/api/client/generate`, {
     method: "POST",
     headers: getAuthHeaders(),
     body: JSON.stringify(params),
   });
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
-  return data.session;
-}
-
-export async function getPhotosession(sessionId: string): Promise<PhotoSession & { photos: GeneratedPhoto[] }> {
-  const res = await fetch(`${API_BASE}/api/client/photosession/${sessionId}`, {
-    headers: getAuthHeaders(false),
-  });
-  if (!res.ok) throw new Error(await res.text());
-  const data = await res.json();
-  return data.session;
+  return { sessionId: data.sessionId, spent: data.spent };
 }
 
 export async function listPhotosessions(): Promise<PhotoSession[]> {
-  const res = await fetch(`${API_BASE}/api/client/photosessions`, {
+  const res = await fetch(`${API_BASE}/api/client/sessions`, {
     headers: getAuthHeaders(false),
   });
   if (!res.ok) throw new Error(await res.text());

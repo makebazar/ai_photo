@@ -57,14 +57,17 @@ import {
   type ClientView,
   type PhotoSession,
   type PromptAspectRatio,
-  type MockPhoto,
   type PlanId,
 } from "./clientFlow";
 import {
   createOrder,
+  createPhotosession,
+  getAvatarStatus,
+  listPhotosessions,
   listPacks,
   payOrder,
   getProfile,
+  startAvatarTraining,
   type StylePack,
 } from "../../lib/clientApi";
 
@@ -190,7 +193,8 @@ export function ClientMiniApp() {
   const [lightboxIndex, setLightboxIndex] = React.useState<number | null>(null);
   const [uploadTarget, setUploadTarget] = React.useState<number>(20);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
-  const [picked, setPicked] = React.useState<Array<{ name: string; url: string }>>([]);
+  const [picked, setPicked] = React.useState<Array<{ name: string; url: string; file: File }>>([]);
+  const generatingSessionRef = React.useRef<string | null>(null);
   const [packs, setPacks] = React.useState<StylePack[]>([]);
   const [packsLoading, setPacksLoading] = React.useState(true);
   const [aspectSheetOpen, setAspectSheetOpen] = React.useState(false);
@@ -365,25 +369,47 @@ export function ClientMiniApp() {
   }, [busy, uploadProgress, toast]);
 
   React.useEffect(() => {
-    if (state.training.status === "ready") return;
-    if (state.training.status === "idle") return;
-    const id = window.setInterval(() => {
-      const next = Math.min(100, state.training.progress + Math.max(1.5, 8 - state.training.progress / 16));
-      const left = Math.max(0, Math.round((100 - next) / 10));
-      dispatch({ type: "training_progress", progress: next, etaMinutes: left });
-      if (next >= 100) {
-        dispatch({ type: "training_ready" });
-        toast.push({ title: "Аватар готов", variant: "success" });
+    if (state.view !== "training") return;
+    if (state.training.status === "idle" || state.training.status === "ready") return;
+    let active = true;
+    const tick = async () => {
+      if (!active) return;
+      try {
+        const avatar = await getAvatarStatus();
+        if (!active) return;
+        if (avatar.status === "ready") {
+          dispatch({ type: "training_ready" });
+          toast.push({ title: "Аватар готов", variant: "success" });
+          await fetchProfile();
+          return;
+        }
+        if (avatar.status === "failed") {
+          toast.push({ title: "Обучение не удалось", variant: "danger" });
+          go("upload");
+          return;
+        }
+        const next = Math.min(95, state.training.progress + Math.max(2, 8 - state.training.progress / 20));
+        const left = Math.max(1, Math.round((100 - next) / 8));
+        dispatch({ type: "training_progress", progress: next, etaMinutes: left });
+      } catch (err) {
+        console.error("[Client] Training status polling failed:", err);
       }
-    }, 520);
-    return () => window.clearInterval(id);
-  }, [dispatch, state.training.progress, state.training.status, toast]);
+    };
+    void tick();
+    const id = window.setInterval(() => {
+      void tick();
+    }, 3500);
+    return () => {
+      active = false;
+      window.clearInterval(id);
+    };
+  }, [fetchProfile, go, state.training.progress, state.training.status, state.view, toast]);
 
   React.useEffect(() => {
     if (state.view !== "generating") return;
     if (state.generating.status !== "generating") return;
     const id = window.setInterval(() => {
-      const next = Math.min(100, state.generating.progress + Math.max(2, Math.round(14 - state.generating.progress / 10)));
+      const next = Math.min(95, state.generating.progress + Math.max(2, Math.round(14 - state.generating.progress / 10)));
       const eta = Math.max(0, Math.round((100 - next) / 4));
       dispatch({ type: "generating_progress", progress: next, etaSeconds: eta });
     }, 240);
@@ -391,38 +417,67 @@ export function ClientMiniApp() {
   }, [state.generating.progress, state.generating.status, state.view]);
 
   React.useEffect(() => {
-    async function maybeFinish() {
-      if (state.view !== "generating" || state.generating.status !== "generating" || state.generating.progress < 100 || busy) return;
-      setBusy("gen");
-      const photos: MockPhoto[] = Array.from({ length: state.pendingCustomCount }).map((_, i) => ({
-        id: `photo_${Date.now()}_${i}`,
-        url: `https://via.placeholder.com/512x512?text=Photo+${i + 1}`,
-        label: `Photo ${i + 1}`,
-      }));
-      const session: PhotoSession = {
-        id: `sess_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-        plan: state.plan,
-        styleId: state.pendingStyleId ?? "pack",
-        styleTitle: state.pendingStyleId === "custom" ? "Свой стиль" : pendingPack?.title ?? "Пакет",
-        styleMode: state.pendingStyleId === "custom" ? "custom" : "pack",
-        prompt: state.pendingStyleId === "custom" ? state.pendingCustomPrompt : undefined,
-        settings: {
-          count: state.pendingCustomCount,
-          aspectRatio: state.pendingStyleId === "custom" ? state.pendingCustomAspect : undefined,
-          enhance: state.pendingEnhance,
-          steps: state.pendingStyleId === "custom" ? state.pendingCustomSteps : undefined,
-          faceFix: state.pendingStyleId === "custom" ? state.pendingCustomFaceFix : undefined,
-        },
-        createdAt: Date.now(),
-        photos,
-      };
-      dispatch({ type: "generating_done" });
-      dispatch({ type: "session_created", session });
-      setBusy(null);
-      go("gallery");
-    }
-    void maybeFinish();
-  }, [busy, pendingPack, state.generating.progress, state.generating.status, state.view]);
+    if (state.view !== "generating") return;
+    if (state.generating.status !== "generating") return;
+    if (!generatingSessionRef.current) return;
+    let active = true;
+    const tick = async () => {
+      if (!active || !generatingSessionRef.current) return;
+      try {
+        const sessions = await listPhotosessions();
+        if (!active || !generatingSessionRef.current) return;
+        const current = sessions.find((s) => s.id === generatingSessionRef.current);
+        if (!current) return;
+        if (current.status === "failed" || current.status === "canceled") {
+          toast.push({ title: "Генерация не удалась", variant: "danger" });
+          generatingSessionRef.current = null;
+          dispatch({ type: "generating_done" });
+          go("style_list");
+          return;
+        }
+        if (current.status === "done" && current.photos.length > 0) {
+          const session: PhotoSession = {
+            id: current.id,
+            plan: state.plan,
+            styleId: state.pendingStyleId ?? "custom",
+            styleTitle: current.title || (state.pendingStyleId === "custom" ? "Свой стиль" : pendingPack?.title ?? "Пакет"),
+            styleMode: current.mode,
+            prompt: current.prompt || undefined,
+            settings: {
+              count: Number(current.settings?.count || current.photos.length || state.pendingCustomCount),
+              negative: current.settings?.negative,
+              aspectRatio: current.settings?.aspectRatio as PromptAspectRatio | undefined,
+              enhance: current.settings?.enhance ?? state.pendingEnhance,
+              cfgScale: current.settings?.cfgScale,
+              steps: current.settings?.steps,
+              faceFix: current.settings?.faceFix,
+            },
+            createdAt: Date.parse(current.createdAt),
+            photos: current.photos.map((p) => ({
+              id: p.id,
+              url: p.url,
+              label: p.label || "Photo",
+            })),
+          };
+          generatingSessionRef.current = null;
+          dispatch({ type: "generating_done" });
+          dispatch({ type: "session_created", session });
+          await fetchProfile();
+          go("gallery");
+        }
+      } catch (err) {
+        console.error("[Client] Sessions polling failed:", err);
+      }
+    };
+    void tick();
+    const id = window.setInterval(() => {
+      void tick();
+    }, 3500);
+    return () => {
+      active = false;
+      window.clearInterval(id);
+    };
+  }, [fetchProfile, go, pendingPack?.title, state.generating.status, state.pendingCustomCount, state.pendingEnhance, state.pendingStyleId, state.plan, state.view, toast]);
 
   async function generateFlow() {
     if (!isAvatarActive) {
@@ -436,20 +491,18 @@ export function ClientMiniApp() {
     }
     try {
       setBusy("gen");
-      const res = await fetch(`${API_BASE}/api/client/generate`, {
-        method: "POST",
-        headers: getAuthHeaders(),
-        body: JSON.stringify({ 
-          styleId: state.pendingStyleId, 
-          modelId: state.pendingModelId, 
-          count: state.pendingCustomCount,
-          prompt: state.pendingStyleId === "custom" ? state.pendingCustomPrompt : undefined,
-          negative: state.pendingStyleId === "custom" ? state.pendingCustomNegative : undefined,
-          aspectRatio: state.pendingStyleId === "custom" ? state.pendingCustomAspect : undefined,
-        }),
+      const data = await createPhotosession({
+        styleId: state.pendingStyleId,
+        modelId: state.pendingModelId,
+        count: state.pendingCustomCount,
+        prompt: state.pendingStyleId === "custom" ? state.pendingCustomPrompt : undefined,
+        negative: state.pendingStyleId === "custom" ? state.pendingCustomNegative : undefined,
+        aspectRatio: state.pendingStyleId === "custom" ? state.pendingCustomAspect : undefined,
+        cfgScale: state.pendingStyleId === "custom" ? state.pendingCustomCfgScale : undefined,
+        steps: state.pendingStyleId === "custom" ? state.pendingCustomSteps : undefined,
+        faceFix: state.pendingStyleId === "custom" ? state.pendingCustomFaceFix : undefined,
+        enhance: state.pendingEnhance,
       });
-      if (!res.ok) throw new Error(await res.text());
-      const data = await res.json();
       dispatch({ 
         type: "set_profile", 
         tokensBalance: state.tokensBalance - data.spent, 
@@ -463,6 +516,7 @@ export function ClientMiniApp() {
       });
 
       dispatch({ type: "generating_start" });
+      generatingSessionRef.current = data.sessionId;
 
       go("generating");
     } catch (err) {
@@ -508,10 +562,27 @@ export function ClientMiniApp() {
   async function startTraining() {
     if (state.dataset.uploaded < state.dataset.minRequired) return;
     if (busy) return;
-    setBusy("train");
-    dispatch({ type: "training_queued", astriaModelId: `m_${Date.now()}`, jobId: `j_${Date.now()}` });
-    setBusy(null);
-    go("training");
+    try {
+      setBusy("train");
+      const photoDataUrls = await Promise.all(
+        picked.slice(0, state.dataset.maxAllowed).map(
+          (item) =>
+            new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(String(reader.result || ""));
+              reader.onerror = () => reject(reader.error || new Error("Failed to read file"));
+              reader.readAsDataURL(item.file);
+            }),
+        ),
+      );
+      const res = await startAvatarTraining(photoDataUrls);
+      dispatch({ type: "training_queued", astriaModelId: res.astriaModelId || `m_${Date.now()}`, jobId: res.jobId });
+      go("training");
+    } catch (err) {
+      toast.push({ title: "Ошибка", description: String(err), variant: "danger" });
+    } finally {
+      setBusy(null);
+    }
   }
 
   function openPicker() { fileInputRef.current?.click(); }
@@ -525,7 +596,10 @@ export function ClientMiniApp() {
 
   function onFilesPicked(files: FileList | null) {
     if (!files || files.length === 0) return;
-    const next = Array.from(files).filter((f) => f.type.startsWith("image/")).slice(0, state.dataset.maxAllowed).map((f) => ({ name: f.name, url: URL.createObjectURL(f) }));
+    const next = Array.from(files)
+      .filter((f) => f.type.startsWith("image/"))
+      .slice(0, state.dataset.maxAllowed)
+      .map((f) => ({ name: f.name, url: URL.createObjectURL(f), file: f }));
     setPicked(next);
     setUploadProgress(100);
     dispatch({ type: "upload_progress", uploaded: next.length });
