@@ -1,6 +1,8 @@
 import { allocateCommissionsForOrder, unlockCommissions } from "./mlm.mjs";
 import { createPrompt, createTuneFromImages, isAstriaEnabled, waitForPrompt } from "./astria.mjs";
 import { readConfig } from "./config.mjs";
+import fs from "node:fs";
+import path from "node:path";
 
 // Minimal job runner for prototype: simulates training/generation.
 // For production: move this into a separate worker process + queue (BullMQ, etc.).
@@ -218,12 +220,32 @@ async function handleSessionGenerate(db, job) {
     }
 
     await db.query(`delete from generated_photos where session_id = $1`, [sessionId]);
+    const storageDir = path.join(process.cwd(), "storage");
+    if (!fs.existsSync(storageDir)) fs.mkdirSync(storageDir, { recursive: true });
+
     let i = 0;
     for (const url of ready.images.slice(0, count)) {
-      await db.query(
-        `insert into generated_photos (session_id, url, label) values ($1, $2, $3)`,
-        [sessionId, url, `Result ${i + 1}`],
-      );
+      let finalUrl = url;
+
+      // Download to local storage to persist beyond Astria's 30-day retention
+      try {
+        const res = await fetch(url);
+        if (res.ok) {
+          const buffer = Buffer.from(await res.arrayBuffer());
+          const filename = `session_${sessionId}_${i}_${Date.now()}.jpg`;
+          fs.writeFileSync(path.join(storageDir, filename), buffer);
+          finalUrl = `/storage/${filename}`;
+        }
+      } catch (err) {
+        console.error("[Storage] Failed to download image from Astria:", err);
+        // Fallback to original S3 URL if download fails
+      }
+
+      await db.query(`insert into generated_photos (session_id, url, label) values ($1, $2, $3)`, [
+        sessionId,
+        finalUrl,
+        `Result ${i + 1}`,
+      ]);
       i += 1;
     }
     await db.query(`update photo_sessions set status = 'done', updated_at = now() where id = $1`, [sessionId]);

@@ -434,6 +434,15 @@ async function main() {
     await ensureSeedData(db);
   });
 
+  // Serve generated photos (local storage).
+  const storageDir = path.join(process.cwd(), "storage");
+  if (!fs.existsSync(storageDir)) fs.mkdirSync(storageDir, { recursive: true });
+  await app.register(fastifyStatic, {
+    root: storageDir,
+    prefix: "/storage/",
+    decorateReply: false, // already decorated by dist static
+  });
+
   // Serve SPA build when running in a container/production.
   const distDir = path.join(process.cwd(), "dist");
   if (fs.existsSync(distDir)) {
