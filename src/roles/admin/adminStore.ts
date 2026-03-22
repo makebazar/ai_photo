@@ -406,5 +406,13 @@ export function useAdminStore() {
     });
   }, [state]);
 
-  return { state, dispatch };
+  const setState = React.useCallback((data: Partial<AdminState>) => {
+    dispatch({ type: "load_data", data });
+  }, []);
+
+  const updateConfig = React.useCallback((patch: Partial<AdminState["config"]>) => {
+    dispatch({ type: "config_update", patch });
+  }, []);
+
+  return { state, dispatch, setState, updateConfig };
 }

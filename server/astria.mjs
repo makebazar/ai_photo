@@ -1,36 +1,38 @@
 const ASTRIA_BASE_URL = process.env.ASTRIA_BASE_URL || "https://api.astria.ai";
-const ASTRIA_API_KEY = process.env.ASTRIA_API_KEY || "";
-const ASTRIA_TUNE_BASE_ID = Number(process.env.ASTRIA_TUNE_BASE_ID || 1504944);
-const ASTRIA_MODEL_TYPE = process.env.ASTRIA_MODEL_TYPE || "lora";
-const ASTRIA_TRAIN_PRESET = process.env.ASTRIA_TRAIN_PRESET || "";
+
+function getApiKey(providedKey) {
+  return providedKey || process.env.ASTRIA_API_KEY || "";
+}
 
 export function resolveAstriaOptions(input = {}) {
   return {
     tuneBaseId:
       input.tuneBaseId != null && Number.isFinite(Number(input.tuneBaseId))
         ? Number(input.tuneBaseId)
-        : ASTRIA_TUNE_BASE_ID,
-    modelType: input.modelType != null ? String(input.modelType) : ASTRIA_MODEL_TYPE,
-    trainPreset: input.trainPreset != null ? String(input.trainPreset) : ASTRIA_TRAIN_PRESET,
+        : Number(process.env.ASTRIA_TUNE_BASE_ID || 1504944),
+    modelType: input.modelType != null ? String(input.modelType) : (process.env.ASTRIA_MODEL_TYPE || "lora"),
+    trainPreset: input.trainPreset != null ? String(input.trainPreset) : (process.env.ASTRIA_TRAIN_PRESET || ""),
   };
 }
 
-function authHeaders(extra = {}) {
-  if (!ASTRIA_API_KEY) throw new Error("ASTRIA_API_KEY is required");
-  return { Authorization: `Bearer ${ASTRIA_API_KEY}`, ...extra };
+function authHeaders(apiKey, extra = {}) {
+  const key = getApiKey(apiKey);
+  if (!key) throw new Error("Astria API key is required (check .env or Admin settings)");
+  return { Authorization: `Bearer ${key}`, ...extra };
 }
 
-export function isAstriaEnabled() {
-  return Boolean(ASTRIA_API_KEY);
+export function isAstriaEnabled(apiKey) {
+  return Boolean(getApiKey(apiKey));
 }
 
-export async function testConnection() {
-  if (!ASTRIA_API_KEY) throw new Error("ASTRIA_API_KEY is missing in environment");
+export async function testConnection(apiKey) {
+  const key = getApiKey(apiKey);
+  if (!key) throw new Error("Astria API key is missing");
   // Simple check by listing tunes (minimal impact)
   try {
     const data = await astriaFetch("/tunes?page=1&per_page=1", {
       method: "GET",
-      headers: authHeaders(),
+      headers: authHeaders(key),
     });
     return { ok: true, message: "Connection successful", tunesCount: Array.isArray(data) ? data.length : 0 };
   } catch (err) {
@@ -69,7 +71,7 @@ function parseDataUrl(input) {
   return { mimeType, buffer, ext };
 }
 
-export async function createTuneFromImages({ title, name, token, images, callback, tuneBaseId, modelType, trainPreset }) {
+export async function createTuneFromImages({ title, name, token, images, callback, tuneBaseId, modelType, trainPreset, apiKey }) {
   if (!Array.isArray(images) || images.length < 4) throw new Error("At least 4 images required");
   const opts = resolveAstriaOptions({ tuneBaseId, modelType, trainPreset });
 
@@ -98,14 +100,14 @@ export async function createTuneFromImages({ title, name, token, images, callbac
 
     return await astriaFetch("/tunes", {
       method: "POST",
-      headers: authHeaders(),
+      headers: authHeaders(apiKey),
       body: form,
     });
   }
 
   return await astriaFetch("/tunes", {
     method: "POST",
-    headers: authHeaders({ "Content-Type": "application/json" }),
+    headers: authHeaders(apiKey, { "Content-Type": "application/json" }),
     body: JSON.stringify({
       tune: {
         title: String(title),
@@ -121,15 +123,15 @@ export async function createTuneFromImages({ title, name, token, images, callbac
   });
 }
 
-export async function getTune(tuneId) {
+export async function getTune(tuneId, apiKey) {
   return await astriaFetch(`/tunes/${encodeURIComponent(String(tuneId))}`, {
-    headers: authHeaders(),
+    headers: authHeaders(apiKey),
   });
 }
 
-export async function getTuneStatus(tuneId) {
+export async function getTuneStatus(tuneId, apiKey) {
   try {
-    const tune = await getTune(tuneId);
+    const tune = await getTune(tuneId, apiKey);
     const s = String(tune?.status || "").toLowerCase();
     if (s.includes("fail") || s.includes("error")) return { status: "failed", tune };
     if (tune?.trained_at || s === "ready" || s === "done" || s === "completed") return { status: "ready", tune };
@@ -140,7 +142,7 @@ export async function getTuneStatus(tuneId) {
   }
 }
 
-export async function createPrompt({ tuneId, text, negativePrompt, numImages, callback, cfgScale, steps, aspectRatio, superResolution, faceCorrect }) {
+export async function createPrompt({ tuneId, text, negativePrompt, numImages, callback, cfgScale, steps, aspectRatio, superResolution, faceCorrect, apiKey }) {
   const form = new FormData();
   form.append("prompt[text]", String(text));
   if (negativePrompt) form.append("prompt[negative_prompt]", String(negativePrompt));
@@ -154,14 +156,14 @@ export async function createPrompt({ tuneId, text, negativePrompt, numImages, ca
 
   return await astriaFetch(`/tunes/${encodeURIComponent(String(tuneId))}/prompts`, {
     method: "POST",
-    headers: authHeaders(),
+    headers: authHeaders(apiKey),
     body: form,
   });
 }
 
-export async function getPrompt(promptId) {
+export async function getPrompt(promptId, apiKey) {
   return await astriaFetch(`/prompts/${encodeURIComponent(String(promptId))}`, {
-    headers: authHeaders(),
+    headers: authHeaders(apiKey),
   });
 }
 
@@ -188,10 +190,10 @@ export function extractPromptImages(prompt) {
   return [...new Set(out.filter(Boolean))];
 }
 
-export async function waitForPrompt(promptId, { timeoutMs = 8 * 60 * 1000, pollMs = 5000 } = {}) {
+export async function waitForPrompt(promptId, { timeoutMs = 8 * 60 * 1000, pollMs = 5000, apiKey } = {}) {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
-    const prompt = await getPrompt(promptId);
+    const prompt = await getPrompt(promptId, apiKey);
     const status = String(prompt?.status || "").toLowerCase();
     if (status.includes("fail") || status.includes("error")) return { status: "failed", prompt, images: [] };
     const images = extractPromptImages(prompt);

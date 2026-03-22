@@ -17,11 +17,13 @@ const pool = makePool();
  * Placeholder for Astria AI model status check.
  * In production: will call https://api.astria.ai/tunes/:id
  */
-async function checkAstriaModelStatus(modelId) {
+async function checkAstriaModelStatus(db, modelId) {
   if (!modelId) return "none";
-  if (!isAstriaEnabled()) return "active";
+  const cfg = await readConfig(db);
+  const apiKey = cfg?.astria?.apiKey;
+  if (!isAstriaEnabled(apiKey)) return "active";
   try {
-    const { status } = await getTuneStatus(modelId);
+    const { status } = await getTuneStatus(modelId, apiKey);
     if (status === "deleted") return "deleted";
     if (status === "failed") return "failed";
     return "active";
@@ -529,7 +531,9 @@ async function main() {
   app.post("/api/admin/debug/astria-test", async (req) => {
     requireAdmin(req);
     try {
-      const result = await testConnection();
+      const cfg = await withTx(pool, (db) => readConfig(db));
+      const apiKey = cfg?.astria?.apiKey;
+      const result = await testConnection(apiKey);
       return { ok: true, ...result };
     } catch (err) {
       return { ok: false, error: err.message };
@@ -1137,7 +1141,7 @@ async function main() {
       let astriaStatus = "none";
 
       if (avatar?.astria_model_id) {
-        astriaStatus = await checkAstriaModelStatus(avatar.astria_model_id);
+        astriaStatus = await checkAstriaModelStatus(db, avatar.astria_model_id);
         if (astriaStatus === "deleted") {
           console.log(`[Auth] Avatar model ${avatar.astria_model_id} deleted in Astria. Resetting access.`);
           avatarAccessExpiresAt = null;

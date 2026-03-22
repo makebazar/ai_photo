@@ -206,6 +206,7 @@ export type AdminConfig = {
     models?: GenerationModelConfig[];
   };
   astria?: {
+    apiKey?: string;
     tuneBaseId: number;
     modelType: string;
     trainPreset?: string;

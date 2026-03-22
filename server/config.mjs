@@ -36,6 +36,7 @@ const DEFAULT_CONFIG = {
     ],
   },
   astria: {
+    apiKey: "", // Can be stored in DB now
     tuneBaseId: 1504944,
     modelType: "lora",
     trainPreset: "",

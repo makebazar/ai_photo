@@ -102,7 +102,7 @@ async function handleAvatarTrain(db, job) {
   if (images.length < 4) throw new Error("avatar.train: at least 4 images required");
 
   let astriaModelId = `astria_model_${String(job.id).slice(0, 8)}`;
-  if (isAstriaEnabled()) {
+  if (isAstriaEnabled(astriaCfg.apiKey)) {
     const tune = await createTuneFromImages({
       title: tuneTitle,
       name: astriaCfg.className || process.env.ASTRIA_CLASS_NAME || "person",
@@ -112,6 +112,7 @@ async function handleAvatarTrain(db, job) {
       tuneBaseId: astriaCfg.tuneBaseId,
       modelType: astriaCfg.modelType,
       trainPreset: astriaCfg.trainPreset,
+      apiKey: astriaCfg.apiKey,
     });
     if (!tune?.id) throw new Error("Astria create tune returned no id");
     astriaModelId = String(tune.id);
@@ -128,9 +129,9 @@ async function handleAvatarTrain(db, job) {
            deleted_at = null`,
     [
       userId,
-      isAstriaEnabled() ? "training" : "ready",
+      isAstriaEnabled(astriaCfg.apiKey) ? "training" : "ready",
       astriaModelId,
-      isAstriaEnabled() ? null : new Date().toISOString(),
+      isAstriaEnabled(astriaCfg.apiKey) ? null : new Date().toISOString(),
     ],
   );
 
@@ -161,7 +162,7 @@ async function handleSessionGenerate(db, job) {
   const session = sessionRows?.[0];
   if (!session) throw new Error("session.generate: session not found");
 
-  if (!isAstriaEnabled()) {
+  if (!isAstriaEnabled(astriaCfg.apiKey)) {
     for (let i = 0; i < count; i += 1) {
       await db.query(
         `insert into generated_photos (session_id, url, label) values ($1, $2, $3)`,
@@ -198,6 +199,7 @@ async function handleSessionGenerate(db, job) {
       aspectRatio: settings.aspectRatio,
       superResolution: settings.enhance,
       faceCorrect: settings.faceFix,
+      apiKey: astriaCfg.apiKey,
     });
     if (!prompt?.id) throw new Error("Astria create prompt returned no id");
 
@@ -213,6 +215,7 @@ async function handleSessionGenerate(db, job) {
     const ready = await waitForPrompt(prompt.id, {
       timeoutMs: Number(astriaCfg.promptTimeoutMs || process.env.ASTRIA_PROMPT_TIMEOUT_MS || 8 * 60 * 1000),
       pollMs: Number(astriaCfg.promptPollMs || process.env.ASTRIA_PROMPT_POLL_MS || 5000),
+      apiKey: astriaCfg.apiKey,
     });
     if (ready.status !== "ready" || !ready.images.length) {
       await db.query(`update photo_sessions set status = 'failed', updated_at = now() where id = $1`, [sessionId]);
