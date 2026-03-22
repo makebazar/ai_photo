@@ -8,8 +8,13 @@ import {
   FileText, BarChart2, MoreVertical, Layout, Grid, List, Activity, UserPlus,
   ArrowRight, Key, Lock, Eye, EyeOff, CheckCircle2, AlertTriangle, HelpCircle
 } from "lucide-react";
-import { cn } from "../../lib/utils";
-import { Card, Button, Input, Badge, Progress, Toast, Tooltip, Modal } from "../../components/ui";
+import { cn } from "../../lib/cn";
+import { Card } from "../../components/ui/Card";
+import { Button } from "../../components/ui/Button";
+import { Badge } from "../../components/ui/Badge";
+import { Progress } from "../../components/ui/Progress";
+import { Modal } from "../../components/ui/Modal";
+import { useToast } from "../../components/ui/Toast";
 import { useAdminStore } from "./adminStore";
 import {
   getAdminConfig, getPacks, getPromos, getSessions,
@@ -21,7 +26,6 @@ import {
   type AdminConfig,
   type AdminPlan
 } from "../../lib/adminApi";
-import { toast } from "../../lib/toast";
 import type { AdminNav } from "./adminModel";
 
 const LS_AUTH_KEY = "ai_photo_admin_auth";
@@ -34,6 +38,7 @@ export function AdminDashboard() {
   const [password, setPassword] = React.useState("");
   const [loading, setLoading] = React.useState(false);
   const { state, setState, updateConfig } = useAdminStore();
+  const toast = useToast();
 
   React.useEffect(() => {
     if (isAuthenticated) {
@@ -92,12 +97,13 @@ export function AdminDashboard() {
     }
   };
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (loading) return;
     if (password === (import.meta.env.VITE_ADMIN_TOKEN || "a1b2c3d4e5f6g7h8i9j0")) {
       localStorage.setItem(LS_AUTH_KEY, "true");
       setIsAuthenticated(true);
+      setPassword("");
       toast.push({ title: "Вход выполнен", variant: "success" });
     } else {
       toast.push({ title: "Ошибка", description: "Неверный токен", variant: "danger" });
@@ -177,12 +183,12 @@ export function AdminDashboard() {
           <form onSubmit={handleLogin} className="space-y-4 text-left">
             <div className="space-y-2">
               <label className="text-xs font-semibold uppercase tracking-wider text-white/40">Access Token</label>
-              <Input
+              <input
                 type="password"
                 placeholder="••••••••••••••••"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="h-12 border-white/10 bg-white/5 focus:border-neonViolet/50"
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
+                className="h-12 w-full rounded-lg border border-white/10 bg-white/5 px-4 text-white outline-none focus:border-neonViolet/50"
               />
             </div>
             <Button type="submit" className="h-12 w-full bg-neonViolet hover:bg-neonViolet/90">
@@ -306,7 +312,7 @@ function StatCard({ label, value, icon, trend }: { label: string; value: string 
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/5">
           {icon}
         </div>
-        <Badge variant="secondary" className="bg-white/5 text-[10px] text-white/40">
+        <Badge className="bg-white/5 text-[10px] text-white/40">
           {trend}
         </Badge>
       </div>
@@ -337,7 +343,7 @@ function UsersList({ users, onDelete, onAdjustTokens }: { users: any[]; onDelete
                   <div className="text-xs text-white/40">{u.email}</div>
                 </td>
                 <td className="p-4">
-                  <Badge variant="secondary" className="bg-neonBlue/10 text-neonBlue border-none">
+                  <Badge className="bg-neonBlue/10 text-neonBlue border-none">
                     {u.tokens} ⚡️
                   </Badge>
                 </td>
@@ -378,7 +384,9 @@ function OrdersList({ orders }: { orders: any[] }) {
                 <td className="p-3 font-mono text-xs text-white/60">{o.orderId.slice(0,8)}</td>
                 <td className="p-3 text-white font-bold">{o.amountRub} ₽</td>
                 <td className="p-3">
-                  <Badge variant={o.status === "paid" ? "success" : "secondary"}>{o.status}</Badge>
+                  <Badge className={o.status === "paid" ? "bg-green-500/10 text-green-500 border-none" : "bg-white/5 text-white/40 border-none"}>
+                    {o.status}
+                  </Badge>
                 </td>
                 <td className="p-3 text-white/40">{new Date(o.createdAt).toLocaleString()}</td>
               </tr>
