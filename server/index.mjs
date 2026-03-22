@@ -9,7 +9,7 @@ import { ensureSeedData } from "./seed.mjs";
 import { allocateCommissionsForOrder, reverseCommissionsForOrder, makeReferralCodes, parseReferralCode, resolveReferralCode, trackReferralClick } from "./mlm.mjs";
 import { getTelegramUser, requireTelegramAuth } from "./auth.mjs";
 import { httpError } from "./http.mjs";
-import { getTuneStatus, isAstriaEnabled } from "./astria.mjs";
+import { getTuneStatus, isAstriaEnabled, testConnection } from "./astria.mjs";
 
 const pool = makePool();
 
@@ -524,6 +524,16 @@ async function main() {
     });
 
     return { ok: true, config: cfg };
+  });
+
+  app.post("/api/admin/debug/astria-test", async (req) => {
+    requireAdmin(req);
+    try {
+      const result = await testConnection();
+      return { ok: true, ...result };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
   });
 
   app.get("/api/admin/packs", async (req) => {

@@ -177,6 +177,7 @@ export type AdminNav =
   | "partners"
   | "users"
   | "settings"
+  | "debug"
   | "audit";
 
 export type AdminState = {

@@ -231,6 +231,12 @@ export async function updateAdminConfig(patch: Partial<AdminConfig>): Promise<Ad
   return data.config;
 }
 
+// ============ Debug ============
+
+export async function testAstriaConnection(): Promise<{ ok: boolean; message?: string; tunesCount?: number; error?: string }> {
+  return await fetchAdmin("/api/admin/debug/astria-test", { method: "POST" });
+}
+
 // ============ Style Packs ============
 
 export type AdminPack = {

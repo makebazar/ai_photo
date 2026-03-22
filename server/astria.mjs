@@ -24,6 +24,20 @@ export function isAstriaEnabled() {
   return Boolean(ASTRIA_API_KEY);
 }
 
+export async function testConnection() {
+  if (!ASTRIA_API_KEY) throw new Error("ASTRIA_API_KEY is missing in environment");
+  // Simple check by listing tunes (minimal impact)
+  try {
+    const data = await astriaFetch("/tunes?page=1&per_page=1", {
+      method: "GET",
+      headers: authHeaders(),
+    });
+    return { ok: true, message: "Connection successful", tunesCount: Array.isArray(data) ? data.length : 0 };
+  } catch (err) {
+    throw new Error(`Connection failed: ${err.message}`);
+  }
+}
+
 async function parseBody(res) {
   const text = await res.text();
   if (!text) return null;

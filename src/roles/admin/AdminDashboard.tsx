@@ -28,6 +28,7 @@ import {
   getUsers, getOrders, getPartners, getWithdrawals,
   getAdminConfig, getPacks, getPromos, getSessions,
   deleteUser, deletePartner, adjustUserTokens, updateAdminConfig,
+  testAstriaConnection,
   type AdminPack as ApiAdminPack,
   type AdminPromo as ApiAdminPromo,
   type AdminConfig,
@@ -191,7 +192,7 @@ export function AdminDashboard() {
   const toast = useToast();
   const { state, dispatch } = useAdminStore();
   const [loading, setLoading] = React.useState(false);
-  const [nav, setNav] = React.useState<"overview" | "users" | "orders" | "partners" | "withdrawals" | "packs" | "promos" | "settings">("overview");
+  const [nav, setNav] = React.useState<"overview" | "users" | "orders" | "partners" | "withdrawals" | "packs" | "promos" | "settings" | "debug">("overview");
   const [isAuthenticated, setIsAuthenticated] = React.useState(() => {
     if (typeof window === "undefined") return false;
     return localStorage.getItem(LS_AUTH_KEY) === "1";
@@ -217,6 +218,24 @@ export function AdminDashboard() {
     setIsAuthenticated(false);
     setPassword("");
     toast.push({ title: "Выход из системы", variant: "success" });
+  };
+
+  const [debugResult, setDebugResult] = React.useState<any>(null);
+  const handleTestAstria = async () => {
+    try {
+      setLoading(true);
+      const res = await testAstriaConnection();
+      setDebugResult(res);
+      if (res.ok) {
+        toast.push({ title: "Astria: Соединение установлено", variant: "success" });
+      } else {
+        toast.push({ title: "Astria: Ошибка подключения", description: res.error, variant: "danger" });
+      }
+    } catch (err) {
+      toast.push({ title: "Ошибка", description: String(err), variant: "danger" });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleAdjustTokens = async (userId: string, delta: number) => {
@@ -505,11 +524,33 @@ export function AdminDashboard() {
             <NavButton active={nav === "packs"} onClick={() => setNav("packs")} icon={<Package size={16} />} label={`Паки (${state.packs.length})`} />
             <NavButton active={nav === "promos"} onClick={() => setNav("promos")} icon={<Megaphone size={16} />} label={`Промо (${state.promos.length})`} />
             <NavButton active={nav === "settings"} onClick={() => setNav("settings")} icon={<Settings size={16} />} label="Настройки" />
+            <NavButton active={nav === "debug"} onClick={() => setNav("debug")} icon={<ShieldAlert size={16} />} label="Debug" />
           </div>
         </Card>
 
         {/* Content */}
         {nav === "overview" && <Overview state={state} />}
+        {nav === "debug" && (
+          <div className="space-y-6">
+            <Card className="p-6">
+              <h2 className="mb-4 text-xl font-bold text-white">Проверка API Astria</h2>
+              <div className="flex flex-wrap gap-4">
+                <Button onClick={handleTestAstria} disabled={loading}>
+                  {loading ? <RefreshCw className="mr-2 animate-spin" size={16} /> : <RefreshCw className="mr-2" size={16} />}
+                  Проверить соединение
+                </Button>
+              </div>
+              {debugResult && (
+                <div className={cn("mt-6 rounded-xl border p-4", debugResult.ok ? "border-green-500/20 bg-green-500/5" : "border-red-500/20 bg-red-500/5")}>
+                  <div className="mb-2 font-bold text-white">{debugResult.ok ? "✅ Успешно" : "❌ Ошибка"}</div>
+                  <pre className="overflow-auto text-xs text-white/70">
+                    {JSON.stringify(debugResult, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </Card>
+          </div>
+        )}
         {nav === "users" && <UsersList users={state.users} onDelete={handleDeleteUser} onAdjustTokens={handleAdjustTokens} />}
         {nav === "orders" && <OrdersList orders={state.orders} />}
         {nav === "partners" && (
