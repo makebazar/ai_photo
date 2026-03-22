@@ -56,6 +56,14 @@ function createEmptyState(): AdminState {
     },
     turnoverRub: 0,
     audit: [],
+    stats: {
+      totalRevenue: 0,
+      totalUsers: 0,
+      totalOrders: 0,
+      activePartners: 0,
+      revenueData: [],
+      topPacks: []
+    }
   };
 }
 

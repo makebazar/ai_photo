@@ -89,6 +89,14 @@ export function AdminDashboard() {
         users: [], 
         partners: [], 
         withdrawals: [], 
+        stats: {
+          totalRevenue: 0,
+          totalUsers: 0,
+          totalOrders: 0,
+          activePartners: 0,
+          revenueData: [],
+          topPacks: []
+        }
       });
     } catch (err) {
       toast.push({ title: "Ошибка загрузки", description: String(err), variant: "danger" });

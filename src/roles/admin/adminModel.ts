@@ -194,6 +194,14 @@ export type AdminState = {
   promos: AdminPromoRow[];
   sessions: any[];
   audit: AuditEvent[];
+  stats: {
+    totalRevenue: number;
+    totalUsers: number;
+    totalOrders: number;
+    activePartners: number;
+    revenueData: any[];
+    topPacks: any[];
+  };
 };
 
 export function formatRub(n: number) {
