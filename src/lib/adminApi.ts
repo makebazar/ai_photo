@@ -234,7 +234,10 @@ export async function updateAdminConfig(patch: Partial<AdminConfig>): Promise<Ad
 // ============ Debug ============
 
 export async function testAstriaConnection(): Promise<{ ok: boolean; message?: string; tunesCount?: number; error?: string }> {
-  return await fetchAdmin("/api/admin/debug/astria-test", { method: "POST" });
+  return await fetchAdmin("/api/admin/debug/astria-test", { 
+    method: "POST",
+    body: JSON.stringify({}), // Fastify requires body for POST with application/json
+  });
 }
 
 // ============ Style Packs ============
